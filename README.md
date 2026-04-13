@@ -9,7 +9,7 @@ Scripts for installing and configuring [OpenClaw](https://openclaw.ai) AI gatewa
 Run the interactive demo to learn how OpenClaw works — no changes to your system:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/demo-install.sh | bash
+bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/demo-install.sh)
 ```
 
 Or clone and run:
@@ -18,6 +18,8 @@ Or clone and run:
 git clone https://github.com/tonytrue92-beep/openclaw-factory.git
 bash openclaw-factory/scripts/demo-install.sh
 ```
+
+> **Note:** Do not use `curl ... | bash` — the script is interactive and needs terminal input for step-by-step navigation.
 
 ### Claude Proxy Installer
 
