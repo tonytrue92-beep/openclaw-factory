@@ -7,6 +7,11 @@ set -euo pipefail
 #  Не трогает основную систему (~/.openclaw)
 # ═══════════════════════════════════════════════════════════════
 
+# Поддержка curl | bash — всегда читаем ввод с терминала, а не из pipe
+if [[ ! -t 0 ]]; then
+  exec < /dev/tty
+fi
+
 PROFILE="demo"
 DEMO_DIR="$HOME/.openclaw-${PROFILE}"
 SPEED=${SPEED:-0.02}
