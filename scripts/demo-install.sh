@@ -942,10 +942,10 @@ echo ""
 pause
 
 # ═══════════════════════════════════════════════════════════════
-#  Финал
+#  Финал демо — ВЫБОР
 # ═══════════════════════════════════════════════════════════════
 
-step_header "✓" "COMPLETE"
+step_header "✓" "DEMO COMPLETE"
 
 # Очистка демо-директории
 rm -rf "${DEMO_DIR}"
@@ -955,32 +955,462 @@ echo -e "${BOLD}${MAGENTA}"
 cat << 'DONE'
    ╔════════════════════════════════════════════════════════════════╗
    ║                                                                ║
-   ║   🎉  Demo complete — Демонстрация завершена!                  ║
+   ║   🎉  Демонстрация завершена!                                  ║
    ║                                                                ║
-   ║   Чтобы установить OpenClaw по-настоящему:                     ║
-   ║                                                                ║
-   ║   1. npm install -g openclaw@latest                            ║
-   ║   2. openclaw onboard                                          ║
-   ║   3. Создайте бота в Telegram через @BotFather                 ║
-   ║   4. openclaw channels add --channel telegram --token ...      ║
-   ║   5. Напишите боту — он ответит!                               ║
-   ║                                                                ║
-   ║   📖 Документация: docs.openclaw.ai                            ║
+   ║   Теперь вы знаете, как работает OpenClaw.                     ║
+   ║   Демо-файлы удалены. Ваша система чиста.                      ║
    ║                                                                ║
    ╚════════════════════════════════════════════════════════════════╝
 
 DONE
 echo -e "${NC}"
 
-explain "Демо-файлы удалены. Ваша система чиста." \
+explain "Что дальше? У вас два варианта:"
+
+echo -e "   ${BOLD}${GREEN}  1)${NC}  ${BOLD}Завершить${NC} — выйти из скрипта. Вы сможете установить OpenClaw позже"
+echo -e "       самостоятельно по инструкции на ${CYAN}docs.openclaw.ai${NC}"
+echo ""
+echo -e "   ${BOLD}${YELLOW}  2)${NC}  ${BOLD}Установить по-настоящему${NC} — прямо сейчас развернуть OpenClaw,"
+echo -e "       подключить Telegram-бота и получить работающего AI-ассистента"
+echo ""
+
+divider
+
+echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2]:${NC}"
+echo ""
+read -r CHOICE
+
+case "$CHOICE" in
+  2)
+    ;;
+  *)
+    echo ""
+    explain "Хорошо! Когда будете готовы — запустите этот скрипт снова" \
+      "или установите вручную:" \
+      "" \
+      "  npm install -g openclaw@latest" \
+      "  openclaw onboard" \
+      "" \
+      "Удачи! 🙌"
+    echo ""
+    exit 0
+    ;;
+esac
+
+# ═══════════════════════════════════════════════════════════════════════
+#
+#   ЧАСТЬ 2: РЕАЛЬНАЯ УСТАНОВКА
+#
+# ═══════════════════════════════════════════════════════════════════════
+
+clear
+echo ""
+echo -e "${BOLD}${GREEN}"
+cat << 'REAL'
+    ____  _____    _    _       ___ _   _ ____ _____  _    _     _
+   |  _ \| ____|  / \  | |    |_ _| \ | / ___|_   _|/ \  | |   | |
+   | |_) |  _|   / _ \ | |     | ||  \| \___ \ | | / _ \ | |   | |
+   |  _ <| |___ / ___ \| |___  | || |\  |___) || |/ ___ \| |___| |___
+   |_| \_\_____/_/   \_\_____||___|_| \_|____/ |_/_/   \_\_____|_____|
+
+REAL
+echo -e "${NC}"
+echo -e "${BOLD}   Real Installation — Настоящая установка OpenClaw${NC}"
+echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+explain "Отлично! Сейчас мы установим OpenClaw по-настоящему." \
   "" \
-  "Спасибо за внимание! Теперь вы знаете, как:" \
-  "  ✓ Установить OpenClaw" \
-  "  ✓ Пройти первоначальную настройку" \
-  "  ✓ Подключить Telegram-бота" \
-  "  ✓ Создать и настроить AI-агентов" \
-  "  ✓ Отправить первое сообщение" \
-  "  ✓ Чинить проблемы, если что-то пошло не так" \
+  "Вот что произойдёт:" \
+  "  1. Проверим, что Node.js и npm на месте" \
+  "  2. Установим OpenClaw (если ещё не установлен)" \
+  "  3. Запустим onboard — интерактивную настройку" \
+  "  4. Вы введёте токен Telegram-бота" \
+  "  5. Система автоматически создаст первого AI-ассистента" \
   "" \
-  "Удачи! 🙌"
+  "Это займёт 3–5 минут."
+
+pause
+
+# ═══════════════════════════════════════════════════════════════
+#  REAL STEP 1: Проверка зависимостей
+# ═══════════════════════════════════════════════════════════════
+
+step_header "R1" "REAL SYSTEM CHECK"
+
+explain "Проверяем, что всё необходимое на месте..."
+
+# Node.js
+echo -n -e "   ${DIM}Node.js... ${NC}"
+if command -v node &>/dev/null; then
+  NODE_VER=$(node -v)
+  NODE_MAJOR=$(echo "$NODE_VER" | sed 's/v//' | cut -d. -f1)
+  if [[ "$NODE_MAJOR" -ge 22 ]]; then
+    echo -e "${GREEN}✓ ${NODE_VER}${NC}"
+  else
+    echo -e "${RED}✗ ${NODE_VER} (нужна >= 22.14)${NC}"
+    echo ""
+    explain "Ваша версия Node.js слишком старая. Обновите:" \
+      "  Зайдите на https://nodejs.org и скачайте LTS-версию (зелёная кнопка)." \
+      "  После установки закройте терминал, откройте заново и запустите скрипт снова."
+    exit 1
+  fi
+else
+  echo -e "${RED}✗ не найден${NC}"
+  echo ""
+  explain "Node.js не установлен. Без него OpenClaw не работает." \
+    "  Зайдите на https://nodejs.org и скачайте LTS-версию." \
+    "  Установите, перезапустите терминал и запустите скрипт снова."
+  exit 1
+fi
+
+# npm
+echo -n -e "   ${DIM}npm...     ${NC}"
+if command -v npm &>/dev/null; then
+  echo -e "${GREEN}✓ $(npm -v)${NC}"
+else
+  echo -e "${RED}✗ не найден${NC}"
+  explain "npm не найден. Переустановите Node.js с nodejs.org."
+  exit 1
+fi
+
+# Проверяем, установлен ли уже OpenClaw
+echo -n -e "   ${DIM}OpenClaw...${NC}"
+if command -v openclaw &>/dev/null; then
+  OC_VER=$(openclaw --version 2>&1 | head -1)
+  echo -e "${GREEN}✓ ${OC_VER} (уже установлен)${NC}"
+  OPENCLAW_INSTALLED=true
+else
+  echo -e "${YELLOW}○ не установлен (установим сейчас)${NC}"
+  OPENCLAW_INSTALLED=false
+fi
+
+echo ""
+ok "System check passed"
+
+pause
+
+# ═══════════════════════════════════════════════════════════════
+#  REAL STEP 2: Установка OpenClaw
+# ═══════════════════════════════════════════════════════════════
+
+step_header "R2" "INSTALL OPENCLAW"
+
+if [[ "$OPENCLAW_INSTALLED" == true ]]; then
+  explain "OpenClaw уже установлен. Проверим, не нужно ли обновить..."
+
+  echo -e "   ${DIM}Проверяем обновления...${NC}"
+  # Попробуем обновить до последней версии
+  npm install -g openclaw@latest 2>&1 | tail -5 | while IFS= read -r line; do
+    echo -e "   ${DIM}${line}${NC}"
+  done
+  echo ""
+  OC_VER=$(openclaw --version 2>&1 | head -1)
+  ok "OpenClaw ${OC_VER} — актуальная версия"
+else
+  explain "Устанавливаем OpenClaw..." \
+    "Это займёт 30–60 секунд. npm скачает все необходимые пакеты."
+
+  echo ""
+  npm install -g openclaw@latest 2>&1 | while IFS= read -r line; do
+    echo -e "   ${DIM}${line}${NC}"
+  done
+  echo ""
+
+  if command -v openclaw &>/dev/null; then
+    OC_VER=$(openclaw --version 2>&1 | head -1)
+    ok "OpenClaw ${OC_VER} — установлен!"
+  else
+    echo -e "   ${RED}✗ Ошибка установки. Попробуйте вручную: npm install -g openclaw@latest${NC}"
+    exit 1
+  fi
+fi
+
+pause
+
+# ═══════════════════════════════════════════════════════════════
+#  REAL STEP 3: Onboard
+# ═══════════════════════════════════════════════════════════════
+
+step_header "R3" "ONBOARDING — НАСТРОЙКА"
+
+# Проверяем, есть ли уже конфиг
+if [[ -f "$HOME/.openclaw/openclaw.json" ]]; then
+  explain "OpenClaw уже настроен (нашёлся файл ~/.openclaw/openclaw.json)." \
+    "Пропускаем onboard и переходим к подключению Telegram-бота." \
+    "" \
+    "Если хотите перенастроить с нуля — запустите 'openclaw onboard' вручную."
+else
+  explain "Запускаем onboard — интерактивную настройку." \
+    "" \
+    "Сейчас откроется мастер настройки. Отвечайте на вопросы —" \
+    "используйте стрелки ↑↓ для выбора и Enter для подтверждения." \
+    "" \
+    "Рекомендации:" \
+    "  • Провайдер: Anthropic (Claude) — лучшее качество ответов" \
+    "  • API-ключ: получите на console.anthropic.com → API Keys" \
+    "  • Gateway mode: Local" \
+    "  • System service: Yes"
+
+  pause
+
+  echo ""
+  echo -e "   ${BOLD}${YELLOW}Запускаю openclaw onboard...${NC}"
+  echo -e "   ${DIM}(Отвечайте на вопросы в терминале)${NC}"
+  echo ""
+
+  openclaw onboard
+
+  if [[ $? -eq 0 ]]; then
+    ok "Onboard завершён! OpenClaw настроен."
+  else
+    echo ""
+    warn "Onboard завершился с ошибкой. Попробуйте: openclaw onboard"
+    echo ""
+    echo -e "   ${DIM}Продолжить всё равно? [y/n]${NC}"
+    read -r cont
+    [[ "$cont" != "y" && "$cont" != "Y" ]] && exit 1
+  fi
+fi
+
+pause
+
+# ═══════════════════════════════════════════════════════════════
+#  REAL STEP 4: Подготовка Telegram-бота
+# ═══════════════════════════════════════════════════════════════
+
+step_header "R4" "TELEGRAM BOT SETUP"
+
+explain "Теперь подключим Telegram-бота." \
+  "" \
+  "Если вы ещё не создали бота — сделайте это сейчас:" \
+  "" \
+  "  1. Откройте Telegram" \
+  "  2. Найдите @BotFather" \
+  "  3. Отправьте /newbot" \
+  "  4. Введите имя и username бота" \
+  "  5. Скопируйте полученный токен"
+
+echo ""
+echo -e "   ${DIM}┌────────────────────────────────────────────────────────────┐${NC}"
+echo -e "   ${DIM}│  ${WHITE}Токен выглядит так:${NC}${DIM}                                       │${NC}"
+echo -e "   ${DIM}│  ${YELLOW}7123456789:AAHk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx${NC}${DIM}             │${NC}"
+echo -e "   ${DIM}│                                                            │${NC}"
+echo -e "   ${DIM}│  ${RED}Никому не показывайте токен — это пароль от бота!${NC}${DIM}        │${NC}"
+echo -e "   ${DIM}└────────────────────────────────────────────────────────────┘${NC}"
+echo ""
+
+divider
+
+echo -e "   ${BOLD}${WHITE}Вставьте токен Telegram-бота:${NC}"
+echo ""
+read -r BOT_TOKEN
+
+# Валидация токена
+if [[ -z "$BOT_TOKEN" ]]; then
+  echo ""
+  warn "Токен не введён. Пропускаем подключение Telegram."
+  echo -e "   ${DIM}Вы сможете подключить бота позже командой:${NC}"
+  show_cmd "openclaw channels add --channel telegram --token ВАШ_ТОКЕН"
+  echo ""
+  pause
+
+  # Переход к финалу без Telegram
+  TELEGRAM_CONNECTED=false
+else
+  # Базовая проверка формата токена
+  if [[ ! "$BOT_TOKEN" =~ ^[0-9]+:.+ ]]; then
+    echo ""
+    warn "Токен выглядит некорректно. Обычный формат: 1234567890:AAHk-xxxxx"
+    echo -e "   ${DIM}Попробовать подключить всё равно? [y/n]${NC}"
+    read -r try_anyway
+    if [[ "$try_anyway" != "y" && "$try_anyway" != "Y" ]]; then
+      TELEGRAM_CONNECTED=false
+    fi
+  fi
+
+  if [[ -z "${TELEGRAM_CONNECTED:-}" ]]; then
+    echo ""
+    explain "Подключаем бота к OpenClaw..."
+    echo ""
+
+    # Получаем информацию о боте через Telegram API
+    echo -e "   ${DIM}Проверяю токен через Telegram API...${NC}"
+    BOT_INFO=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe" 2>/dev/null)
+
+    if echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['ok']" 2>/dev/null; then
+      BOT_USERNAME=$(echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result']['username'])")
+      BOT_NAME=$(echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result']['first_name'])")
+      echo -e "   ${GREEN}✓ Бот найден: ${BOLD}${BOT_NAME}${NC} ${GREEN}(@${BOT_USERNAME})${NC}"
+      echo ""
+    else
+      BOT_USERNAME="my_bot"
+      BOT_NAME="My Bot"
+      warn "Не удалось проверить токен (возможно, нет интернета). Продолжаем..."
+      echo ""
+    fi
+
+    # Подключаем канал
+    echo -e "   ${DIM}Подключаю Telegram-канал...${NC}"
+    openclaw channels add --channel telegram --name "${BOT_NAME}" --token "${BOT_TOKEN}" 2>&1 | while IFS= read -r line; do
+      echo -e "   ${DIM}${line}${NC}"
+    done
+    echo ""
+
+    TELEGRAM_CONNECTED=true
+    ok "Telegram-бот @${BOT_USERNAME} подключён!"
+  fi
+fi
+
+pause
+
+# ═══════════════════════════════════════════════════════════════
+#  REAL STEP 5: Создание первого ассистента
+# ═══════════════════════════════════════════════════════════════
+
+step_header "R5" "CREATE YOUR FIRST ASSISTANT"
+
+explain "Создаём вашего первого AI-ассистента!" \
+  "" \
+  "Ассистент будет:" \
+  "  • Отвечать на вопросы в Telegram" \
+  "  • Помогать с текстами, идеями, задачами" \
+  "  • Запоминать контекст разговора" \
+  "" \
+  "Давайте выберем имя для агента."
+
+echo ""
+echo -e "   ${BOLD}${WHITE}Введите ID агента (латиницей, без пробелов, например: assistant):${NC}"
+echo -e "   ${DIM}   или нажмите Enter для значения по умолчанию (assistant)${NC}"
+echo ""
+read -r AGENT_ID
+AGENT_ID="${AGENT_ID:-assistant}"
+
+# Убираем пробелы и спецсимволы
+AGENT_ID=$(echo "$AGENT_ID" | tr -cd 'a-zA-Z0-9_-' | tr '[:upper:]' '[:lower:]')
+if [[ -z "$AGENT_ID" ]]; then
+  AGENT_ID="assistant"
+fi
+
+echo ""
+explain "Создаём агента '${AGENT_ID}'..."
+
+# Создаём агента
+echo -e "   ${DIM}Создаю агента...${NC}"
+openclaw agents add "${AGENT_ID}" 2>&1 | while IFS= read -r line; do
+  echo -e "   ${DIM}${line}${NC}"
+done
+echo ""
+
+# Привязываем к Telegram (если подключён)
+if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
+  echo -e "   ${DIM}Привязываю к Telegram...${NC}"
+  openclaw agents bind --agent "${AGENT_ID}" --bind telegram 2>&1 | while IFS= read -r line; do
+    echo -e "   ${DIM}${line}${NC}"
+  done
+  echo ""
+fi
+
+# Проверяем gateway
+echo -e "   ${DIM}Проверяю gateway...${NC}"
+GW_STATUS=$(openclaw gateway status 2>&1)
+if echo "$GW_STATUS" | grep -q "running"; then
+  echo -e "   ${GREEN}✓ Gateway работает${NC}"
+else
+  echo -e "   ${YELLOW}○ Gateway не запущен. Запускаю...${NC}"
+  openclaw gateway start 2>&1 | while IFS= read -r line; do
+    echo -e "   ${DIM}${line}${NC}"
+  done
+fi
+echo ""
+
+# Автодиагностика
+echo -e "   ${DIM}Запускаю диагностику...${NC}"
+openclaw doctor --fix --yes 2>&1 | while IFS= read -r line; do
+  echo -e "   ${DIM}${line}${NC}"
+done
+echo ""
+
+ok "Ассистент '${AGENT_ID}' создан и готов к работе!"
+
+pause
+
+# ═══════════════════════════════════════════════════════════════
+#  REAL STEP 6: Проверка и итоги
+# ═══════════════════════════════════════════════════════════════
+
+step_header "R6" "FINAL CHECK"
+
+explain "Финальная проверка — убедимся, что всё работает..."
+echo ""
+
+# Полный статус
+openclaw status --all 2>&1 | while IFS= read -r line; do
+  echo -e "   ${line}"
+done
+echo ""
+
+divider
+
+if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
+  explain "Проверяем Telegram-канал..."
+  echo ""
+  openclaw channels status --probe 2>&1 | while IFS= read -r line; do
+    echo -e "   ${line}"
+  done
+  echo ""
+fi
+
+ok "Все проверки пройдены!"
+
+# ═══════════════════════════════════════════════════════════════
+#  Финальный экран
+# ═══════════════════════════════════════════════════════════════
+
+echo ""
+echo -e "${BOLD}${GREEN}"
+cat << 'FINISH'
+   ╔════════════════════════════════════════════════════════════════╗
+   ║                                                                ║
+   ║   🚀  УСТАНОВКА ЗАВЕРШЕНА!                                     ║
+   ║                                                                ║
+   ║   Ваш AI-ассистент работает и готов отвечать в Telegram.       ║
+   ║                                                                ║
+   ╚════════════════════════════════════════════════════════════════╝
+
+FINISH
+echo -e "${NC}"
+
+# Итоговая информация
+echo -e "   ${BOLD}${WHITE}Что установлено:${NC}"
+OC_VER=$(openclaw --version 2>&1 | head -1)
+echo -e "   ${GREEN}✓${NC} OpenClaw ${OC_VER}"
+echo -e "   ${GREEN}✓${NC} Gateway (автозапуск при включении компьютера)"
+echo -e "   ${GREEN}✓${NC} Агент: ${BOLD}${AGENT_ID}${NC}"
+if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
+  echo -e "   ${GREEN}✓${NC} Telegram: @${BOT_USERNAME:-бот подключён}"
+fi
+echo ""
+
+echo -e "   ${BOLD}${WHITE}Что делать дальше:${NC}"
+if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
+  echo -e "   ${CYAN}1.${NC} Откройте Telegram и напишите боту @${BOT_USERNAME:-вашему боту} — он ответит!"
+else
+  echo -e "   ${CYAN}1.${NC} Подключите Telegram: openclaw channels add --channel telegram --token ..."
+fi
+echo -e "   ${CYAN}2.${NC} Dashboard: ${UNDERLINE:-}http://127.0.0.1:18789${NC}"
+echo -e "   ${CYAN}3.${NC} Если что-то не работает: ${BOLD}openclaw doctor --fix${NC}"
+echo ""
+
+echo -e "   ${BOLD}${WHITE}Команды на каждый день:${NC}"
+show_cmd "openclaw status --all        # Проверить всё"
+show_cmd "openclaw logs --follow       # Смотреть логи"
+show_cmd "openclaw doctor --fix        # Починить проблемы"
+show_cmd "openclaw gateway restart     # Перезапустить"
+echo ""
+
+echo -e "   ${DIM}📖 Документация: docs.openclaw.ai${NC}"
+echo -e "   ${DIM}💬 Поддержка: openclaw.ai/community${NC}"
+echo ""
+echo -e "   ${BOLD}Удачи! Ваш AI-ассистент ждёт первого сообщения. 🙌${NC}"
 echo ""
