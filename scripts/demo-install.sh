@@ -7,9 +7,15 @@ set -euo pipefail
 #  Не трогает основную систему (~/.openclaw)
 # ═══════════════════════════════════════════════════════════════
 
-# Поддержка curl | bash — всегда читаем ввод с терминала, а не из pipe
+# Поддержка curl | bash — читаем ввод с терминала, а не из pipe
 if [[ ! -t 0 ]]; then
-  exec < /dev/tty
+  if [[ -e /dev/tty ]]; then
+    exec < /dev/tty
+  else
+    echo "ERROR: This script requires an interactive terminal."
+    echo "Run it directly: bash <(curl -fsSL URL)"
+    exit 1
+  fi
 fi
 
 PROFILE="demo"
