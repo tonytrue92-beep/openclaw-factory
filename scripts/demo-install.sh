@@ -185,6 +185,42 @@ install_node_via_nvm() {
   fi
 }
 
+# Устойчивая установка OpenClaw через npm — с ретраями и нормальными таймаутами
+install_openclaw_npm() {
+  # Настраиваем npm для стабильной работы при плохой сети
+  npm config set fetch-retries 5 >/dev/null 2>&1 || true
+  npm config set fetch-retry-mintimeout 20000 >/dev/null 2>&1 || true
+  npm config set fetch-retry-maxtimeout 120000 >/dev/null 2>&1 || true
+  npm config set fetch-timeout 300000 >/dev/null 2>&1 || true
+
+  local attempt=1
+  local max_attempts=3
+  local rc=1
+
+  while [[ $attempt -le $max_attempts ]]; do
+    if [[ $attempt -gt 1 ]]; then
+      echo ""
+      warn "Сеть подвисла. Повторная попытка ${attempt}/${max_attempts}..."
+      sleep 3
+    fi
+
+    set +e
+    npm install -g openclaw@latest 2>&1 | tail -12 | while IFS= read -r line; do
+      echo -e "   ${DIM}${line}${NC}"
+    done
+    rc=${PIPESTATUS[0]}
+    set -e
+
+    if [[ $rc -eq 0 ]] && command -v openclaw &>/dev/null; then
+      return 0
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
 # Интерактивный промпт автоустановки Node.js — спрашивает и запускает
 prompt_install_node() {
   echo ""
@@ -385,19 +421,25 @@ if command -v openclaw &>/dev/null; then
 else
   explain "Запускаю реальную установку OpenClaw. Это займёт 30–60 секунд..."
 
-  npm install -g openclaw@latest 2>&1 | tail -8 | while IFS= read -r line; do
-    echo -e "   ${DIM}${line}${NC}"
-  done
-  echo ""
-
-  ru "'added N packages' — npm скачал библиотеки, от которых зависит OpenClaw."
-  ru "Это нормально — современные программы состоят из множества маленьких модулей."
-  ru ""
-  ru "'looking for funding' — некоторые авторы просят поддержку. Это информация,"
-  ru "НЕ ошибка. Можно спокойно игнорировать."
-  ru ""
-  ru "'npm warn deprecated' — предупреждение о старой библиотеке внутри пакета."
-  ru "Тоже не ошибка — просто информация для разработчиков. Игнорируем."
+  if install_openclaw_npm; then
+    echo ""
+    ru "'added N packages' — npm скачал библиотеки, от которых зависит OpenClaw."
+    ru "Это нормально — современные программы состоят из множества маленьких модулей."
+    ru ""
+    ru "'looking for funding' — некоторые авторы просят поддержку. НЕ ошибка."
+    ru "'npm warn deprecated' — предупреждение о старой библиотеке. Тоже не ошибка."
+  else
+    echo ""
+    warn "Не удалось скачать OpenClaw — npm registry не отвечает."
+    ru "Это временная проблема с сетью (ETIMEDOUT, registry.npmjs.org)."
+    ru "Что можно сделать:"
+    ru "  1. Проверьте интернет, VPN/прокси"
+    ru "  2. Подождите 1-2 минуты и запустите скрипт ещё раз"
+    ru "  3. Или вручную: npm install -g openclaw@latest"
+    ru ""
+    ru "Демо на этом закончим — без OpenClaw дальше идти нет смысла."
+    exit 1
+  fi
 fi
 
 divider
@@ -1332,29 +1374,32 @@ if [[ "$DRY_RUN" == true ]]; then
 else
   if [[ "$OPENCLAW_INSTALLED" == true ]]; then
     explain "OpenClaw уже установлен. Проверим, не нужно ли обновить..."
-
     echo -e "   ${DIM}Проверяем обновления...${NC}"
-    npm install -g openclaw@latest 2>&1 | tail -5 | while IFS= read -r line; do
-      echo -e "   ${DIM}${line}${NC}"
-    done
-    echo ""
-    OC_VER=$(openclaw --version 2>&1 | head -1)
-    ok "OpenClaw ${OC_VER} — актуальная версия"
+    if install_openclaw_npm; then
+      echo ""
+      OC_VER=$(openclaw --version 2>&1 | head -1)
+      ok "OpenClaw ${OC_VER} — актуальная версия"
+    else
+      echo ""
+      warn "Не удалось проверить обновления — npm registry не отвечает."
+      ru "Продолжаем с текущей версией OpenClaw."
+    fi
   else
     explain "Устанавливаем OpenClaw..." \
       "Это займёт 30–60 секунд. npm скачает все необходимые пакеты."
 
     echo ""
-    npm install -g openclaw@latest 2>&1 | while IFS= read -r line; do
-      echo -e "   ${DIM}${line}${NC}"
-    done
-    echo ""
-
-    if command -v openclaw &>/dev/null; then
+    if install_openclaw_npm; then
+      echo ""
       OC_VER=$(openclaw --version 2>&1 | head -1)
       ok "OpenClaw ${OC_VER} — установлен!"
     else
-      echo -e "   ${RED}✗ Ошибка установки. Попробуйте вручную: npm install -g openclaw@latest${NC}"
+      echo ""
+      warn "Не удалось установить OpenClaw — npm registry не отвечает (ETIMEDOUT)."
+      ru "Это проблема сети, не скрипта. Что делать:"
+      ru "  1. Проверьте интернет, VPN/прокси"
+      ru "  2. Подождите 1-2 минуты и запустите скрипт ещё раз"
+      ru "  3. Или вручную позже: npm install -g openclaw@latest"
       exit 1
     fi
   fi
