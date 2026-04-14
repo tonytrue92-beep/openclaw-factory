@@ -1162,7 +1162,58 @@ if [[ "$DRY_RUN" == true ]]; then
   echo -e "${YELLOW}○ не установлен (установим сейчас)${NC}"
   OPENCLAW_INSTALLED=false
 else
-  # Реальная проверка
+  # Функция автоустановки Node.js через nvm (без sudo)
+  install_node_via_nvm() {
+    echo ""
+    explain "Запускаю автоустановку Node.js через nvm..." \
+      "nvm — Node Version Manager. Устанавливает Node.js в вашу домашнюю папку" \
+      "без прав администратора. Это займёт 1-2 минуты."
+
+    export NVM_DIR="$HOME/.nvm"
+
+    if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+      echo -e "   ${DIM}Скачиваю nvm...${NC}"
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh 2>/dev/null | bash 2>&1 | tail -5 | while IFS= read -r line; do
+        echo -e "   ${DIM}${line}${NC}"
+      done
+    else
+      echo -e "   ${DIM}nvm уже установлен${NC}"
+    fi
+
+    # Загружаем nvm в текущей сессии
+    [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
+    [[ -s "$NVM_DIR/bash_completion" ]] && \. "$NVM_DIR/bash_completion"
+
+    if ! command -v nvm &>/dev/null; then
+      echo ""
+      echo -e "   ${RED}✗ Не удалось загрузить nvm.${NC}"
+      echo -e "   ${DIM}Установите Node.js вручную с https://nodejs.org и запустите скрипт снова.${NC}"
+      exit 1
+    fi
+
+    echo ""
+    echo -e "   ${DIM}Устанавливаю Node.js 22 LTS...${NC}"
+    nvm install 22 2>&1 | tail -5 | while IFS= read -r line; do
+      echo -e "   ${DIM}${line}${NC}"
+    done
+    nvm use 22 &>/dev/null
+
+    echo ""
+    if command -v node &>/dev/null; then
+      NODE_VER=$(node -v)
+      echo -e "   ${GREEN}✓ Node.js ${NODE_VER} установлен${NC}"
+      if command -v npm &>/dev/null; then
+        echo -e "   ${GREEN}✓ npm $(npm -v) установлен${NC}"
+      fi
+    else
+      echo -e "   ${RED}✗ Установка не удалась. Попробуйте вручную: https://nodejs.org${NC}"
+      exit 1
+    fi
+  }
+
+  NEEDS_NODE_INSTALL=false
+
+  # Проверка Node.js
   echo -n -e "   ${DIM}Node.js... ${NC}"
   if command -v node &>/dev/null; then
     NODE_VER=$(node -v)
@@ -1171,30 +1222,50 @@ else
       echo -e "${GREEN}✓ ${NODE_VER}${NC}"
     else
       echo -e "${RED}✗ ${NODE_VER} (нужна >= 22.14)${NC}"
-      echo ""
-      explain "Ваша версия Node.js слишком старая. Обновите:" \
-        "  Зайдите на https://nodejs.org и скачайте LTS-версию (зелёная кнопка)." \
-        "  После установки закройте терминал, откройте заново и запустите скрипт снова."
-      exit 1
+      NEEDS_NODE_INSTALL=true
     fi
   else
     echo -e "${RED}✗ не найден${NC}"
-    echo ""
-    explain "Node.js не установлен. Без него OpenClaw не работает." \
-      "  Зайдите на https://nodejs.org и скачайте LTS-версию." \
-      "  Установите, перезапустите терминал и запустите скрипт снова."
-    exit 1
+    NEEDS_NODE_INSTALL=true
   fi
 
+  # Проверка npm
   echo -n -e "   ${DIM}npm...     ${NC}"
   if command -v npm &>/dev/null; then
     echo -e "${GREEN}✓ $(npm -v)${NC}"
   else
     echo -e "${RED}✗ не найден${NC}"
-    explain "npm не найден. Переустановите Node.js с nodejs.org."
-    exit 1
+    NEEDS_NODE_INSTALL=true
   fi
 
+  # Если что-то не хватает — предлагаем автоустановку
+  if [[ "$NEEDS_NODE_INSTALL" == true ]]; then
+    echo ""
+    explain "Node.js или npm не найдены (или версия устарела)." \
+      "" \
+      "Я могу автоматически установить Node.js 22 LTS через nvm" \
+      "(Node Version Manager — безопасно, без прав администратора)." \
+      "" \
+      "Или откажитесь — тогда установите вручную с nodejs.org."
+
+    echo -e "   ${BOLD}${WHITE}Установить Node.js автоматически? [Y/n]:${NC}"
+    read -r autoinstall
+    autoinstall="${autoinstall:-y}"
+
+    if [[ "$autoinstall" == "y" || "$autoinstall" == "Y" ]]; then
+      install_node_via_nvm
+    else
+      echo ""
+      explain "Хорошо. Установите Node.js вручную:" \
+        "  1. Зайдите на https://nodejs.org" \
+        "  2. Скачайте LTS-версию (зелёная кнопка)" \
+        "  3. Установите" \
+        "  4. Перезапустите терминал и запустите скрипт снова"
+      exit 1
+    fi
+  fi
+
+  # Проверка OpenClaw
   echo -n -e "   ${DIM}OpenClaw...${NC}"
   if command -v openclaw &>/dev/null; then
     OC_VER=$(openclaw --version 2>&1 | head -1)
