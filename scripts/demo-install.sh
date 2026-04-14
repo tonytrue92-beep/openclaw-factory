@@ -1006,7 +1006,7 @@ cat << 'DONE'
 DONE
 echo -e "${NC}"
 
-explain "Что дальше? У вас два варианта:"
+explain "Что дальше? У вас три варианта:"
 
 echo -e "   ${BOLD}${GREEN}  1)${NC}  ${BOLD}Завершить${NC} — выйти из скрипта. Вы сможете установить OpenClaw позже"
 echo -e "       самостоятельно по инструкции на ${CYAN}docs.openclaw.ai${NC}"
@@ -1014,15 +1014,22 @@ echo ""
 echo -e "   ${BOLD}${YELLOW}  2)${NC}  ${BOLD}Установить по-настоящему${NC} — прямо сейчас развернуть OpenClaw,"
 echo -e "       подключить Telegram-бота и получить работающего AI-ассистента"
 echo ""
+echo -e "   ${BOLD}${CYAN}  3)${NC}  ${BOLD}Симуляция установки${NC} — посмотреть, как выглядит процесс установки,"
+echo -e "       без реальных изменений на вашем компьютере"
+echo ""
 
 divider
 
-echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2]:${NC}"
+echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2/3]:${NC}"
 echo ""
 read -r CHOICE
 
 case "$CHOICE" in
   2)
+    DRY_RUN=false
+    ;;
+  3)
+    DRY_RUN=true
     ;;
   *)
     echo ""
