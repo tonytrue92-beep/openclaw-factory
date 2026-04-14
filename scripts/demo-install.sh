@@ -96,7 +96,17 @@ terminal() {
 
 # Команда, которую пользователь вводит в терминал
 show_cmd() {
-  echo -e "   ${YELLOW}\$${NC} ${GREEN}$1${NC}"
+  local cmd="$1"
+  # Длина команды для рамки (с учётом 2 пробелов по краям, макс ~66 символов)
+  local cmd_len=${#cmd}
+  local width=$((cmd_len + 4))
+  if [[ $width -lt 40 ]]; then width=40; fi
+  if [[ $width -gt 70 ]]; then width=70; fi
+
+  # Верхняя рамка с меткой "копировать ↓"
+  echo -e "   ${DIM}┌─ 📋 скопируйте эту команду (без \$) ─────────────────────┐${NC}"
+  echo -e "   ${DIM}│${NC} ${YELLOW}\$${NC} ${GREEN}${BOLD}${cmd}${NC}"
+  echo -e "   ${DIM}└──────────────────────────────────────────────────────────┘${NC}"
 }
 
 # Реальная команда
@@ -400,6 +410,23 @@ echo -e "   ${BOLD}${MAGENTA}🤖 Если что-то непонятно — с
 echo -e "   ${DIM}   Любой вопрос про установку, настройку, ошибки — всё объяснит.${NC}"
 echo -e "   ${DIM}   Не нужно гуглить, не нужно читать документацию — просто спросите.${NC}"
 echo -e "   ${DIM}   Нейрокуратор знает всё про OpenClaw и ведёт вас от А до Я.${NC}"
+echo ""
+
+# ─── Важное объяснение про знак доллара ───
+echo ""
+echo -e "   ${BOLD}${YELLOW}⚠️  Важно про копирование команд${NC}"
+echo ""
+echo -e "   ${DIM}Когда увидите такую строку:${NC}"
+echo -e "   ${DIM}┌─ 📋 скопируйте эту команду (без \$) ─────────────────────┐${NC}"
+echo -e "   ${DIM}│${NC} ${YELLOW}\$${NC} ${GREEN}${BOLD}npm install -g openclaw@latest${NC}"
+echo -e "   ${DIM}└──────────────────────────────────────────────────────────┘${NC}"
+echo ""
+echo -e "   ${DIM}Знак ${YELLOW}\$${NC} ${DIM}слева — это просто значок терминала (курсор).${NC}"
+echo -e "   ${DIM}Копировать нужно ${BOLD}ТОЛЬКО${NC}${DIM} команду после него:${NC}"
+echo -e "   ${GREEN}   npm install -g openclaw@latest${NC}   ${DIM}← вот это${NC}"
+echo ""
+echo -e "   ${RED}✗${NC} ${DIM}Неправильно: ${NC}${RED}\$ npm install -g openclaw@latest${NC}   ${DIM}(с долларом)${NC}"
+echo -e "   ${GREEN}✓${NC} ${DIM}Правильно:   ${NC}${GREEN}npm install -g openclaw@latest${NC}     ${DIM}(без доллара)${NC}"
 echo ""
 
 explain "Это демо. Ваша рабочая система не пострадает." \
