@@ -137,7 +137,26 @@ divider() {
   echo ""
 }
 
-# Автоустановка Node.js через nvm (без sudo) — используется и в демо, и в реальной установке
+# Прописать nvm в shell rc-файлы, чтобы openclaw работал в новых терминалах
+persist_nvm_in_shell_rc() {
+  local nvm_block='
+# NVM (openclaw-factory installer)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'
+
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    # Создаём файл если его нет
+    [[ ! -f "$rc" ]] && touch "$rc"
+    # Добавляем блок только если ещё не прописан
+    if ! grep -q "openclaw-factory installer" "$rc" 2>/dev/null; then
+      echo "$nvm_block" >> "$rc"
+      echo -e "   ${DIM}↳ прописал nvm в ${rc}${NC}"
+    fi
+  done
+}
+
+# Автоустановка Node.js через nvm (без sudo) — используется в реальной установке
 install_node_via_nvm() {
   echo ""
   explain "Запускаю автоустановку Node.js через nvm..." \
@@ -172,6 +191,10 @@ install_node_via_nvm() {
   done
   nvm use 22 &>/dev/null
 
+  # ВАЖНО: прописываем nvm в shell rc-файлы, иначе после закрытия терминала
+  # команда openclaw будет недоступна ("command not found: openclaw")
+  persist_nvm_in_shell_rc
+
   echo ""
   if command -v node &>/dev/null; then
     NODE_VER=$(node -v)
@@ -179,9 +202,70 @@ install_node_via_nvm() {
     if command -v npm &>/dev/null; then
       echo -e "   ${GREEN}✓ npm $(npm -v) установлен${NC}"
     fi
+    echo -e "   ${GREEN}✓ nvm прописан в ~/.zshrc и ~/.bashrc${NC}"
+    ru "В новых терминалах nvm будет подгружаться автоматически."
+    ru "Это значит, что команда openclaw будет работать всегда, даже после перезагрузки."
   else
     echo -e "   ${RED}✗ Установка не удалась. Попробуйте вручную: https://nodejs.org${NC}"
     exit 1
+  fi
+}
+
+# Автоустановка Homebrew — нужен для многих скиллов OpenClaw (gh, ffmpeg, и т.д.)
+install_homebrew() {
+  echo ""
+  explain "Устанавливаю Homebrew..." \
+    "Homebrew — пакетный менеджер для macOS/Linux. Многие скиллы OpenClaw" \
+    "(github, video-frames, summarize и другие) требуют утилиты через brew." \
+    "" \
+    "Установка займёт 2-5 минут, потребует пароль администратора."
+
+  echo ""
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1 | tail -10 | while IFS= read -r line; do
+    echo -e "   ${DIM}${line}${NC}"
+  done
+
+  # Активируем brew в текущей сессии + прописываем в shell rc
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+    local brew_line='eval "$(/opt/homebrew/bin/brew shellenv)"'
+    for rc in "$HOME/.zprofile" "$HOME/.bash_profile"; do
+      [[ ! -f "$rc" ]] && touch "$rc"
+      if ! grep -q "brew shellenv" "$rc" 2>/dev/null; then
+        echo "$brew_line" >> "$rc"
+        echo -e "   ${DIM}↳ прописал brew в ${rc}${NC}"
+      fi
+    done
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+
+  echo ""
+  if command -v brew &>/dev/null; then
+    echo -e "   ${GREEN}✓ Homebrew $(brew --version | head -1) установлен${NC}"
+  else
+    warn "Homebrew установлен, но не виден в PATH. Откройте новый терминал."
+  fi
+}
+
+# Проверка brew — предлагает автоустановку
+prompt_install_homebrew() {
+  echo ""
+  explain "Homebrew не найден." \
+    "" \
+    "Homebrew нужен для скиллов OpenClaw, которые требуют внешние утилиты" \
+    "(github → gh, video-frames → ffmpeg, obsidian, summarize и т.д.)." \
+    "" \
+    "Без brew базовый функционал работает, но часть скиллов не поставится."
+
+  echo -e "   ${BOLD}${WHITE}Установить Homebrew сейчас? [Y/n]:${NC}"
+  read -r install_brew
+  install_brew="${install_brew:-y}"
+
+  if [[ "$install_brew" == "y" || "$install_brew" == "Y" ]]; then
+    install_homebrew
+  else
+    ru "Пропускаем. Установить можно позже: https://brew.sh"
   fi
 }
 
@@ -1295,6 +1379,16 @@ else
     prompt_install_node
   fi
 
+  # Проверка Homebrew (для скиллов, которые требуют внешние бинарники)
+  echo -n -e "   ${DIM}Homebrew...${NC}"
+  if command -v brew &>/dev/null; then
+    echo -e "${GREEN}✓ $(brew --version | head -1)${NC}"
+    HOMEBREW_INSTALLED=true
+  else
+    echo -e "${YELLOW}○ не найден (нужен для части скиллов)${NC}"
+    HOMEBREW_INSTALLED=false
+  fi
+
   # Проверка OpenClaw
   echo -n -e "   ${DIM}OpenClaw...${NC}"
   if command -v openclaw &>/dev/null; then
@@ -1304,6 +1398,11 @@ else
   else
     echo -e "${YELLOW}○ не установлен (установим сейчас)${NC}"
     OPENCLAW_INSTALLED=false
+  fi
+
+  # Если brew нет — предлагаем поставить ПОСЛЕ проверки всего
+  if [[ "$HOMEBREW_INSTALLED" == false ]]; then
+    prompt_install_homebrew
   fi
 fi
 
@@ -1425,40 +1524,118 @@ if [[ "$DRY_RUN" == true ]]; then
 else
   if [[ -f "$HOME/.openclaw/openclaw.json" ]]; then
     explain "OpenClaw уже настроен (нашёлся файл ~/.openclaw/openclaw.json)." \
-      "Пропускаем onboard и переходим к подключению Telegram-бота." \
+      "Пропускаем настройку и переходим к подключению Telegram-бота." \
       "" \
-      "Если хотите перенастроить с нуля — запустите 'openclaw onboard' вручную."
+      "Если нужно перенастроить с нуля — удалите ~/.openclaw/openclaw.json и перезапустите."
   else
-    explain "Запускаем onboard — интерактивную настройку." \
+    explain "Настраиваем OpenClaw." \
       "" \
-      "Сейчас откроется мастер настройки. Отвечайте на вопросы —" \
-      "используйте стрелки ↑↓ для выбора и Enter для подтверждения." \
+      "Раньше здесь запускался 'openclaw onboard' — интерактивный мастер." \
+      "Но он имеет баги: циклится на выборе каналов, не всегда реагирует на стрелки." \
       "" \
-      "Рекомендации:" \
-      "  • Провайдер: Anthropic (Claude) — лучшее качество ответов" \
-      "  • API-ключ: получите на console.anthropic.com → API Keys" \
-      "  • Gateway mode: Local" \
-      "  • System service: Yes"
+      "Поэтому мы настраиваем всё напрямую через CLI — быстрее и надёжнее." \
+      "" \
+      "Вам нужен будет только один ввод: API-ключ Anthropic."
 
-    pause
+    divider
+
+    # ---- Выбор провайдера (упрощённый — Anthropic по умолчанию) ----
+    echo -e "   ${BOLD}${WHITE}Выберите AI-провайдера:${NC}"
+    echo ""
+    echo -e "   ${GREEN}1)${NC} Anthropic Claude ${DIM}(рекомендуется — лучшее качество для текстов)${NC}"
+    echo -e "   ${GREEN}2)${NC} OpenAI GPT      ${DIM}(дешевле, чуть быстрее)${NC}"
+    echo -e "   ${GREEN}3)${NC} Google Gemini   ${DIM}(бесплатный tier, мультимодальный)${NC}"
+    echo ""
+    echo -e "   ${DIM}Нажмите Enter для Anthropic (по умолчанию):${NC}"
+    read -r provider_choice
+
+    case "${provider_choice:-1}" in
+      2) PROVIDER="openai"; MODEL="openai/gpt-4o"; KEY_URL="https://platform.openai.com/api-keys"; KEY_PREFIX="sk-" ;;
+      3) PROVIDER="google"; MODEL="google/gemini-2.0-flash"; KEY_URL="https://aistudio.google.com/apikey"; KEY_PREFIX="" ;;
+      *) PROVIDER="anthropic"; MODEL="anthropic/claude-sonnet-4-6"; KEY_URL="https://console.anthropic.com/settings/keys"; KEY_PREFIX="sk-ant-" ;;
+    esac
 
     echo ""
-    echo -e "   ${BOLD}${YELLOW}Запускаю openclaw onboard...${NC}"
-    echo -e "   ${DIM}(Отвечайте на вопросы в терминале)${NC}"
+    explain "Выбран: ${PROVIDER}. Модель: ${MODEL}" \
+      "" \
+      "Получите API-ключ здесь: ${KEY_URL}" \
+      "" \
+      "ВАЖНО: ключ — это пароль. Никому не показывайте, не публикуйте в git."
+
+    divider
+
+    # ---- Ввод API-ключа (скрытый) ----
+    while true; do
+      echo -e "   ${BOLD}${WHITE}Вставьте API-ключ и нажмите Enter:${NC}"
+      echo -e "   ${DIM}(при вводе ничего отображаться не будет — это нормально)${NC}"
+      read -rs API_KEY
+      echo ""
+
+      if [[ -z "$API_KEY" ]]; then
+        warn "Ключ пустой. Попробуйте ещё раз или Ctrl+C для выхода."
+        continue
+      fi
+
+      if [[ -n "$KEY_PREFIX" && ! "$API_KEY" =~ ^${KEY_PREFIX} ]]; then
+        warn "Ключ должен начинаться с '${KEY_PREFIX}'. Проверьте, что скопировали правильный."
+        echo -e "   ${DIM}Продолжить всё равно? [y/n]${NC}"
+        read -r force_key
+        [[ "$force_key" != "y" && "$force_key" != "Y" ]] && continue
+      fi
+
+      break
+    done
+
+    echo -e "   ${GREEN}✓ Ключ получен (${#API_KEY} символов)${NC}"
     echo ""
 
-    openclaw onboard
+    # ---- Создаём ~/.openclaw и конфиг напрямую ----
+    explain "Создаю конфигурацию OpenClaw..."
 
-    if [[ $? -eq 0 ]]; then
-      ok "Onboard завершён! OpenClaw настроен."
+    mkdir -p "$HOME/.openclaw"
+
+    # Записываем API-ключ в .env (OpenClaw читает его оттуда)
+    case "$PROVIDER" in
+      anthropic) ENV_VAR="ANTHROPIC_API_KEY" ;;
+      openai)    ENV_VAR="OPENAI_API_KEY" ;;
+      google)    ENV_VAR="GOOGLE_API_KEY" ;;
+    esac
+
+    # Создаём .env если нет, дописываем или заменяем ключ
+    ENV_FILE="$HOME/.openclaw/.env"
+    touch "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    if grep -q "^${ENV_VAR}=" "$ENV_FILE" 2>/dev/null; then
+      # Заменяем существующий ключ
+      sed -i.bak "s|^${ENV_VAR}=.*|${ENV_VAR}=${API_KEY}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
     else
-      echo ""
-      warn "Onboard завершился с ошибкой. Попробуйте: openclaw onboard"
-      echo ""
-      echo -e "   ${DIM}Продолжить всё равно? [y/n]${NC}"
-      read -r cont
-      [[ "$cont" != "y" && "$cont" != "Y" ]] && exit 1
+      echo "${ENV_VAR}=${API_KEY}" >> "$ENV_FILE"
     fi
+    echo -e "   ${GREEN}✓${NC} API-ключ сохранён в ~/.openclaw/.env (режим 600 — только вы можете прочитать)"
+
+    # Устанавливаем модель по умолчанию
+    openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null && \
+      echo -e "   ${GREEN}✓${NC} Модель по умолчанию: ${MODEL}"
+
+    # Устанавливаем gateway как service (автозапуск)
+    if ! openclaw gateway status 2>&1 | grep -q "running"; then
+      echo -e "   ${DIM}Устанавливаю gateway как системный сервис...${NC}"
+      openclaw gateway install 2>&1 | tail -3 | while IFS= read -r line; do
+        echo -e "   ${DIM}${line}${NC}"
+      done
+      openclaw gateway start 2>&1 | tail -3 | while IFS= read -r line; do
+        echo -e "   ${DIM}${line}${NC}"
+      done
+    fi
+
+    # Проверяем
+    if openclaw gateway status 2>&1 | grep -q "running"; then
+      echo -e "   ${GREEN}✓${NC} Gateway запущен"
+    else
+      warn "Gateway не запустился. Продолжим, починить можно позже: openclaw doctor --fix"
+    fi
+
+    ok "OpenClaw настроен без всяких визардов!"
   fi
 fi
 
@@ -1566,6 +1743,52 @@ else
 
       TELEGRAM_CONNECTED=true
       ok "Telegram-бот @${BOT_USERNAME} подключён!"
+
+      # ────────────────────────────────────────────────────────────
+      # ВАЖНО: настроить DM-политику, иначе бот ответит
+      # «access not configured» + pairing code вместо нормального
+      # общения. Спрашиваем Telegram user ID владельца.
+      # ────────────────────────────────────────────────────────────
+      divider
+
+      explain "Настройка доступа к боту." \
+        "" \
+        "По умолчанию бот включает режим 'pairing' — любой новый собеседник" \
+        "получает 'access not configured' и pairing-код, который нужно вручную" \
+        "одобрить владельцем. Это безопасно, но неудобно для личного использования." \
+        "" \
+        "Добавим ваш Telegram user ID в allowlist — тогда вы сразу сможете" \
+        "писать боту без всяких кодов."
+
+      echo ""
+      explain "Как узнать свой Telegram user ID:" \
+        "  1. В Telegram найдите бота @userinfobot" \
+        "  2. Нажмите /start" \
+        "  3. Он вернёт ваш ID — число вида 123456789" \
+        "" \
+        "Или нажмите Enter, чтобы пропустить — тогда придётся одобрять через pairing-код."
+
+      echo ""
+      echo -e "   ${BOLD}${WHITE}Введите ваш Telegram user ID:${NC}"
+      read -r TG_USER_ID
+
+      # Только цифры допустимы
+      TG_USER_ID=$(echo "$TG_USER_ID" | tr -cd '0-9')
+
+      if [[ -n "$TG_USER_ID" ]]; then
+        openclaw config set channels.telegram.dmPolicy allowlist &>/dev/null
+        openclaw config set channels.telegram.allowlistAllowFrom "[\"${TG_USER_ID}\"]" &>/dev/null
+        openclaw gateway restart &>/dev/null
+        echo -e "   ${GREEN}✓${NC} Allowlist настроен: ваш ID ${TG_USER_ID} добавлен"
+        ru "Теперь можете сразу писать боту — он ответит без pairing-кодов."
+        OWNER_TG_ID="$TG_USER_ID"
+      else
+        echo ""
+        warn "ID не введён. Оставляем режим pairing по умолчанию."
+        ru "Когда напишете боту, он ответит 'access not configured' + код."
+        ru "Одобрите его командой: openclaw pairing approve telegram <КОД>"
+        OWNER_TG_ID=""
+      fi
     fi
   fi
 fi
@@ -1799,8 +2022,81 @@ else
   show_cmd "openclaw gateway restart     # Перезапустить"
   echo ""
 
-  echo -e "   ${DIM}📖 Документация: docs.openclaw.ai${NC}"
-  echo -e "   ${DIM}💬 Поддержка: openclaw.ai/community${NC}"
+  # ═══════════════════════════════════════════════════════════════
+  #  TROUBLESHOOTING — частые проблемы и решения
+  # ═══════════════════════════════════════════════════════════════
+  echo ""
+  echo -e "${BOLD}${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${BOLD}${MAGENTA}  🩺 TROUBLESHOOTING — если что-то пошло не так${NC}"
+  echo -e "${BOLD}${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}1. 'zsh: command not found: openclaw' (в новом терминале)${NC}"
+  echo -e "   ${DIM}   Причина: Node.js установлен через nvm, nvm не подхватился в новой сессии.${NC}"
+  echo -e "   ${DIM}   Решение (одноразово):${NC}"
+  echo -e "      ${GREEN}export NVM_DIR=\"\$HOME/.nvm\" && . \"\$NVM_DIR/nvm.sh\"${NC}"
+  echo -e "   ${DIM}   Или закройте и откройте терминал — мы уже прописали nvm в ~/.zshrc.${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}2. Бот пишет 'access not configured' + pairing-код${NC}"
+  echo -e "   ${DIM}   Причина: DM-политика 'pairing' — нужно одобрить пользователя.${NC}"
+  echo -e "   ${DIM}   Решение: одобрить по коду из сообщения:${NC}"
+  echo -e "      ${GREEN}openclaw pairing approve telegram <КОД>${NC}"
+  echo -e "   ${DIM}   Или переключить на allowlist (добавить user ID):${NC}"
+  echo -e "      ${GREEN}openclaw config set channels.telegram.dmPolicy allowlist${NC}"
+  echo -e "      ${GREEN}openclaw config set channels.telegram.allowlistAllowFrom '[\"ID\"]'${NC}"
+  echo -e "      ${GREEN}openclaw gateway restart${NC}"
+  echo -e "   ${DIM}   Узнать свой ID: напишите @userinfobot в Telegram.${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}3. 'brew not installed' при установке скиллов${NC}"
+  echo -e "   ${DIM}   Причина: скилл (github, video-frames, obsidian и т.д.) требует утилиты из Homebrew.${NC}"
+  echo -e "   ${DIM}   Решение: установить Homebrew:${NC}"
+  echo -e "      ${GREEN}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"${NC}"
+  echo -e "   ${DIM}   После установки перезапустите терминал и переустановите скилл:${NC}"
+  echo -e "      ${GREEN}openclaw skills install <имя_скилла>${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}4. 'npm error network ETIMEDOUT' при установке${NC}"
+  echo -e "   ${DIM}   Причина: проблемы с сетью или npm registry.${NC}"
+  echo -e "   ${DIM}   Решение: проверить сеть, подождать 1-2 мин, попробовать снова:${NC}"
+  echo -e "      ${GREEN}npm install -g openclaw@latest${NC}"
+  echo -e "   ${DIM}   Если упорно таймаутит — смените DNS (1.1.1.1) или включите VPN.${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}5. Бот не отвечает, хотя всё запущено${NC}"
+  echo -e "   ${DIM}   Решение — диагностика по шагам:${NC}"
+  echo -e "      ${GREEN}openclaw gateway status${NC}        ${DIM}# должно быть 'running'${NC}"
+  echo -e "      ${GREEN}openclaw channels status --probe${NC} ${DIM}# проверить канал${NC}"
+  echo -e "      ${GREEN}openclaw logs --follow${NC}          ${DIM}# смотреть логи в реальном времени${NC}"
+  echo -e "      ${GREEN}openclaw doctor --fix --yes${NC}     ${DIM}# автопочинка${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}6. 'openclaw onboard' виснет или циклится${NC}"
+  echo -e "   ${DIM}   Причина: баг в визарде — не выходит из секции 'Select a channel'.${NC}"
+  echo -e "   ${DIM}   Решение: выйти по Ctrl+C, дальше настраивать через CLI напрямую:${NC}"
+  echo -e "      ${GREEN}openclaw channels add --channel telegram --token <TOKEN>${NC}"
+  echo -e "      ${GREEN}openclaw agents add assistant${NC}"
+  echo -e "      ${GREEN}openclaw agents bind --agent assistant --bind telegram${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}7. 'Unknown model' / HTML в ответе вместо текста${NC}"
+  echo -e "   ${DIM}   Причина: модель не существует или API endpoint вернул ошибку.${NC}"
+  echo -e "   ${DIM}   Решение: посмотреть доступные модели и выставить существующую:${NC}"
+  echo -e "      ${GREEN}openclaw models list --all${NC}"
+  echo -e "      ${GREEN}openclaw config set agents.defaults.model.primary <провайдер/модель>${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}8. Context overflow / много сообщений в сессии${NC}"
+  echo -e "   ${DIM}   Решение: очистить сессии агента:${NC}"
+  echo -e "      ${GREEN}openclaw sessions cleanup --agent <имя>${NC}"
+  echo -e "      ${GREEN}openclaw sessions cleanup --all-agents${NC}"
+  echo ""
+
+  divider
+
+  echo -e "   ${DIM}📖 Полная документация: https://docs.openclaw.ai${NC}"
+  echo -e "   ${DIM}🐛 Баг-репорты: https://github.com/tonytrue92-beep/openclaw-factory/issues${NC}"
   echo ""
   echo -e "   ${BOLD}Удачи! Ваш AI-ассистент ждёт первого сообщения. 🙌${NC}"
 fi
