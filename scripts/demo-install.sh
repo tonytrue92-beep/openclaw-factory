@@ -21,6 +21,24 @@ fi
 PROFILE="demo"
 DEMO_DIR="$HOME/.openclaw-${PROFILE}"
 SPEED=${SPEED:-0.02}
+SKIP_DEMO=false
+
+# Флаги запуска
+for arg in "$@"; do
+  case "$arg" in
+    --install|--real|--skip-demo) SKIP_DEMO=true ;;
+    --help|-h)
+      echo "Usage: bash demo-install.sh [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --install     Skip demo, go straight to real installation"
+      echo "  --help        Show this help"
+      echo ""
+      echo "Without flags: starts with interactive demo, then offers real install"
+      exit 0
+      ;;
+  esac
+done
 
 # Цвета
 RED='\033[0;31m'
@@ -115,6 +133,15 @@ divider() {
   echo -e "${DIM}   ─────────────────────────────────────────────────────────────${NC}"
   echo ""
 }
+
+# ═══════════════════════════════════════════════════════════════
+#  Если --install — пропускаем демо, сразу к реальной установке
+# ═══════════════════════════════════════════════════════════════
+
+if [[ "$SKIP_DEMO" == true ]]; then
+  # Определяем функции уже загружены, переходим к ЧАСТИ 2
+  :
+else
 
 # ═══════════════════════════════════════════════════════════════
 #  СТАРТОВЫЙ ЭКРАН
@@ -1007,6 +1034,8 @@ case "$CHOICE" in
     exit 0
     ;;
 esac
+
+fi  # конец if SKIP_DEMO
 
 # ═══════════════════════════════════════════════════════════════════════
 #
