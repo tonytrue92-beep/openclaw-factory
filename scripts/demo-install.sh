@@ -1047,6 +1047,50 @@ esac
 
 fi  # конец if SKIP_DEMO
 
+# Если пришли из демо — меню уже было показано и CHOICE/DRY_RUN заданы.
+# Если --install или --dry-run — CHOICE не нужен, идём сразу.
+# При повторном проходе (после симуляции) — показываем меню заново.
+FIRST_LOOP=${FIRST_LOOP:-true}
+
+while true; do  # цикл меню — после симуляции возвращаемся сюда
+
+  # Показываем меню при возврате из симуляции (не первый проход)
+  if [[ "$FIRST_LOOP" == false ]]; then
+    echo ""
+    step_header "↩" "BACK TO MENU"
+
+    explain "Что дальше?"
+
+    echo -e "   ${BOLD}${GREEN}  1)${NC}  ${BOLD}Завершить${NC} — выйти"
+    echo ""
+    echo -e "   ${BOLD}${YELLOW}  2)${NC}  ${BOLD}Установить по-настоящему${NC} — развернуть OpenClaw"
+    echo ""
+    echo -e "   ${BOLD}${CYAN}  3)${NC}  ${BOLD}Симуляция установки${NC} — посмотреть процесс ещё раз"
+    echo ""
+
+    divider
+
+    echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2/3]:${NC}"
+    echo ""
+    read -r CHOICE
+
+    case "$CHOICE" in
+      2)
+        DRY_RUN=false
+        ;;
+      3)
+        DRY_RUN=true
+        ;;
+      *)
+        echo ""
+        explain "До встречи! 🙌"
+        echo ""
+        exit 0
+        ;;
+    esac
+  fi
+  FIRST_LOOP=false
+
 # ═══════════════════════════════════════════════════════════════════════
 #
 #   ЧАСТЬ 2: РЕАЛЬНАЯ УСТАНОВКА
@@ -1620,20 +1664,9 @@ fi
 echo -e "${NC}"
 
 if [[ "$DRY_RUN" == true ]]; then
-  explain "Чтобы установить OpenClaw по-настоящему, запустите:" \
-    "" \
-    "  bash demo-install.sh --install" \
-    "" \
-    "Или пройдите полное демо + установку:" \
-    "" \
-    "  bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/demo-install.sh)"
-  echo ""
-  echo -e "   ${BOLD}${WHITE}Что вам понадобится для реальной установки:${NC}"
-  echo -e "   ${CYAN}1.${NC} Node.js >= 22.14 (nodejs.org)"
-  echo -e "   ${CYAN}2.${NC} API-ключ Anthropic (console.anthropic.com)"
-  echo -e "   ${CYAN}3.${NC} Telegram-бот от @BotFather"
-  echo ""
-  echo -e "   ${BOLD}Когда будете готовы — запускайте установку! 🙌${NC}"
+  explain "Симуляция завершена. Возвращаемся к выбору..."
+  pause
+  continue  # возврат в меню выбора
 else
   echo -e "   ${BOLD}${WHITE}Что установлено:${NC}"
   OC_VER=$(openclaw --version 2>&1 | head -1)
@@ -1668,3 +1701,6 @@ else
   echo -e "   ${BOLD}Удачи! Ваш AI-ассистент ждёт первого сообщения. 🙌${NC}"
 fi
 echo ""
+
+break  # реальная установка завершена — выходим из цикла
+done  # конец while true (цикл меню)
