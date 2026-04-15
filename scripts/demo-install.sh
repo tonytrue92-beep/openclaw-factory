@@ -343,6 +343,74 @@ prompt_install_node() {
 }
 
 # ═══════════════════════════════════════════════════════════════
+#  Helper: гарантируем здоровый gateway (fixes Gregory's issue)
+# ═══════════════════════════════════════════════════════════════
+#
+# Контекст: openclaw onboard иногда падает с
+#   "Cannot read properties of undefined (reading 'trim')"
+# и оставляет конфиг без gateway.mode — после чего gateway
+# закрывается с "1006 abnormal closure" и Telegram-бот молчит,
+# хотя токен на месте.
+#
+# Этот helper:
+#   1. Насильно ставит gateway.mode=local
+#   2. Валидирует конфиг, чинит через doctor --fix
+#   3. Делает deep-проверку gateway
+#   4. При неудаче — перезапускает и пробует ещё раз
+ensure_gateway_healthy() {
+  local label="${1:-gateway}"
+
+  # 1. gateway.mode=local — главный фикс
+  local current_mode
+  current_mode=$(openclaw config get gateway.mode 2>/dev/null | tr -d '\n" ')
+  if [[ "$current_mode" != "local" ]]; then
+    openclaw config set gateway.mode local &>/dev/null && \
+      echo -e "   ${GREEN}✓${NC} gateway.mode=local (локальный режим)"
+  fi
+
+  # 2. Валидация конфига
+  local validation
+  validation=$(openclaw config validate 2>&1 || true)
+  if echo "$validation" | grep -qiE "error|invalid|unrecognized"; then
+    echo -e "   ${DIM}Чиню конфиг: openclaw doctor --fix --yes${NC}"
+    openclaw doctor --fix --yes 2>&1 | tail -5 | while IFS= read -r line; do
+      echo -e "   ${DIM}${line}${NC}"
+    done
+  fi
+
+  # 3. Deep health check (fallback на обычный status если --deep не поддержан)
+  local status_out
+  status_out=$(openclaw gateway status --deep 2>&1)
+  if [[ "$status_out" == *"unknown option"* || "$status_out" == *"Unknown"* ]]; then
+    status_out=$(openclaw gateway status 2>&1)
+  fi
+
+  if echo "$status_out" | grep -qE "running|RPC probe: ok"; then
+    echo -e "   ${GREEN}✓${NC} Gateway здоров"
+    return 0
+  fi
+
+  # 4. Recovery — перезапуск
+  echo -e "   ${YELLOW}○${NC} Gateway не отвечает. Перезапускаю..."
+  openclaw gateway restart 2>&1 | tail -3 | while IFS= read -r line; do
+    echo -e "   ${DIM}${line}${NC}"
+  done
+  sleep 2
+
+  if openclaw gateway status 2>&1 | grep -qE "running"; then
+    echo -e "   ${GREEN}✓${NC} Gateway поднялся после перезапуска"
+    return 0
+  fi
+
+  warn "Gateway всё ещё не отвечает. Recovery вручную:"
+  echo -e "   ${DIM}  openclaw config set gateway.mode local${NC}"
+  echo -e "   ${DIM}  openclaw doctor --fix --yes${NC}"
+  echo -e "   ${DIM}  openclaw gateway restart${NC}"
+  echo -e "   ${DIM}  openclaw logs --follow    # посмотреть что падает${NC}"
+  return 1
+}
+
+# ═══════════════════════════════════════════════════════════════
 #  НАЧАЛЬНОЕ МЕНЮ — 3 варианта сразу на старте
 # ═══════════════════════════════════════════════════════════════
 
@@ -1582,6 +1650,12 @@ else
       "Пропускаем настройку и переходим к подключению Telegram-бота." \
       "" \
       "Если нужно перенастроить с нуля — удалите ~/.openclaw/openclaw.json и перезапустите."
+
+    # Даже при существующем конфиге — принудительно чиним критические поля
+    # (частый кейс: onboard упал на полу-пути и оставил config без gateway.mode)
+    echo ""
+    echo -e "   ${DIM}Проверяю состояние конфига и gateway...${NC}"
+    ensure_gateway_healthy "existing"
   else
     explain "Настраиваем OpenClaw." \
       "" \
@@ -1684,6 +1758,11 @@ AUTHEOF
     openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null && \
       echo -e "   ${GREEN}✓${NC} Модель по умолчанию: ${MODEL}"
 
+    # КРИТИЧНО: ставим gateway.mode=local ДО gateway install/start
+    # (иначе gateway поднимется в непонятном режиме и закроется с 1006)
+    openclaw config set gateway.mode local &>/dev/null && \
+      echo -e "   ${GREEN}✓${NC} gateway.mode=local"
+
     # Устанавливаем gateway как service (автозапуск)
     if ! openclaw gateway status 2>&1 | grep -q "running"; then
       echo -e "   ${DIM}Устанавливаю gateway как системный сервис...${NC}"
@@ -1695,12 +1774,8 @@ AUTHEOF
       done
     fi
 
-    # Проверяем
-    if openclaw gateway status 2>&1 | grep -q "running"; then
-      echo -e "   ${GREEN}✓${NC} Gateway запущен"
-    else
-      warn "Gateway не запустился. Продолжим, починить можно позже: openclaw doctor --fix"
-    fi
+    # Полная проверка: mode + валидация + deep status + auto-recovery
+    ensure_gateway_healthy "fresh install"
 
     ok "OpenClaw настроен без всяких визардов!"
   fi
@@ -1989,22 +2064,8 @@ WSEOF
     echo -e "   ${GREEN}✓${NC} Auth-профиль opencode скопирован в агента ${AGENT_ID}"
   fi
 
-  echo -e "   ${DIM}Проверяю gateway...${NC}"
-  GW_STATUS=$(openclaw gateway status 2>&1)
-  if echo "$GW_STATUS" | grep -q "running"; then
-    echo -e "   ${GREEN}✓ Gateway работает${NC}"
-  else
-    echo -e "   ${YELLOW}○ Gateway не запущен. Запускаю...${NC}"
-    openclaw gateway start 2>&1 | while IFS= read -r line; do
-      echo -e "   ${DIM}${line}${NC}"
-    done
-  fi
-  echo ""
-
-  echo -e "   ${DIM}Запускаю диагностику...${NC}"
-  openclaw doctor --fix --yes 2>&1 | while IFS= read -r line; do
-    echo -e "   ${DIM}${line}${NC}"
-  done
+  echo -e "   ${DIM}Финальная проверка gateway и конфига...${NC}"
+  ensure_gateway_healthy "post-agent"
   echo ""
 
   ok "Ассистент '${AGENT_ID}' создан и готов к работе!"
@@ -2169,11 +2230,16 @@ else
   echo ""
 
   echo -e "   ${BOLD}${WHITE}5. Бот не отвечает, хотя всё запущено${NC}"
-  echo -e "   ${DIM}   Решение — диагностика по шагам:${NC}"
-  echo -e "      ${GREEN}openclaw gateway status${NC}        ${DIM}# должно быть 'running'${NC}"
-  echo -e "      ${GREEN}openclaw channels status --probe${NC} ${DIM}# проверить канал${NC}"
-  echo -e "      ${GREEN}openclaw logs --follow${NC}          ${DIM}# смотреть логи в реальном времени${NC}"
-  echo -e "      ${GREEN}openclaw doctor --fix --yes${NC}     ${DIM}# автопочинка${NC}"
+  echo -e "   ${DIM}   Частая причина: onboard упал с 'Cannot read ... trim' и оставил${NC}"
+  echo -e "   ${DIM}   config без gateway.mode → gateway закрывается (1006 abnormal closure).${NC}"
+  echo -e "   ${DIM}   Recovery (выполнить по порядку):${NC}"
+  echo -e "      ${GREEN}openclaw config get gateway.mode${NC}    ${DIM}# пусто? идём дальше${NC}"
+  echo -e "      ${GREEN}openclaw config set gateway.mode local${NC}"
+  echo -e "      ${GREEN}openclaw config validate${NC}            ${DIM}# должно быть OK${NC}"
+  echo -e "      ${GREEN}openclaw gateway restart${NC}"
+  echo -e "      ${GREEN}openclaw gateway status --deep${NC}      ${DIM}# живой gateway${NC}"
+  echo -e "      ${GREEN}openclaw doctor --fix --yes${NC}         ${DIM}# если что-то ещё криво${NC}"
+  echo -e "      ${GREEN}openclaw logs --follow${NC}              ${DIM}# если ничего не помогло — смотрим логи${NC}"
   echo ""
 
   echo -e "   ${BOLD}${WHITE}6. 'openclaw onboard' виснет или циклится${NC}"
