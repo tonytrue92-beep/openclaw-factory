@@ -580,130 +580,85 @@ pause
 
 step_header "3" "FIRST RUN — ONBOARDING"
 
-explain "При первом запуске OpenClaw задаст несколько вопросов." \
+explain "При первом запуске OpenClaw нужно задать один вопрос: ваш API-ключ." \
   "" \
-  "Это как мастер настройки при первом включении нового телефона —" \
-  "вас спросят: какую AI-модель использовать, где взять ключ доступа," \
-  "как запускать программу. В конце всё создастся автоматически." \
+  "Раньше был интерактивный мастер 'openclaw onboard' с четырьмя вопросами," \
+  "но у него есть баги — он циклился на выборе каналов, не всегда реагировал" \
+  "на стрелки. Поэтому наш установщик настраивает всё напрямую — быстрее и надёжнее." \
   "" \
-  "Мастер настройки называется 'onboard' — дословно «вступление на борт»." \
-  "Запускается один раз. Потом настройки можно менять вручную."
+  "Провайдер мы уже выбрали за вас — ${BOLD}opencode.ai${NC}. Это умный прокси:" \
+  "один ключ даёт доступ к Claude, GPT, Gemini, Grok, Kimi и 25+ моделям." \
+  "Дешевле и удобнее, чем регистрироваться у каждого отдельно."
 
 divider
 
-explain "Вводим команду onboard:"
+# --- Шаг 1: О провайдере opencode.ai ---
 
-show_cmd "openclaw onboard"
-echo ""
-
-explain "Сейчас покажем, как выглядит каждый вопрос мастера и что на него отвечать." \
-  "В реальной установке вы будете отвечать через стрелки и Enter на клавиатуре."
+explain "ПРОВАЙДЕР — opencode.ai" \
+  "" \
+  "Обычно для AI-агентов нужно регистрироваться отдельно у каждого:" \
+  "  • Anthropic (для Claude)" \
+  "  • OpenAI (для GPT)" \
+  "  • Google (для Gemini)" \
+  "У каждого свой ключ, свой биллинг, свой дашборд." \
+  "" \
+  "opencode.ai — один ключ ко всем моделям сразу. Как универсальная SIM-карта." \
+  "Один счёт, один дашборд, легко менять модели." \
+  "" \
+  "По умолчанию мы ставим ${BOLD}Kimi 2.5 (free tariff)${NC} —" \
+  "работает без оплаты, хорошо справляется с повседневными задачами." \
+  "Если захотите Claude или GPT — одна команда, и вы на другой модели."
 
 divider
 
-# --- Вопрос 1: Провайдер ---
+# --- Шаг 2: API-ключ ---
 
-explain "ВОПРОС 1 из 4 — Выбор AI-провайдера." \
+explain "ВОПРОС — API-ключ opencode.ai" \
   "" \
-  "Провайдер — это компания, которая предоставляет AI-модель." \
-  "Модель — это «мозг» вашего агента, от неё зависит качество ответов." \
+  "API-ключ — это ваш персональный «пароль» для доступа к моделям." \
   "" \
-  "Anthropic Claude — сейчас считается лучшим выбором для текстов и рассуждений." \
-  "OpenAI GPT — тоже отличный вариант, чуть дешевле." \
-  "Google Gemini — хорош для работы с данными." \
+  "Где его взять:" \
+  "  ${CYAN}1.${NC} Откройте ${BOLD}https://opencode.ai${NC}" \
+  "  ${CYAN}2.${NC} Зарегистрируйтесь или войдите" \
+  "  ${CYAN}3.${NC} Зайдите в свой Workspace → API Keys → Create Key" \
+  "  ${CYAN}4.${NC} Скопируйте ключ (формат: sk-...)" \
   "" \
-  "Можно выбрать любого — и потом поменять в любой момент."
+  "В реальной установке скрипт автоматически откроет opencode.ai в браузере."
 
-echo -e "   ${WHITE}? Select your AI provider${NC}"
-echo -e "   ${GREEN}  ❯ Anthropic (Claude) — recommended${NC}"
-echo -e "   ${DIM}    OpenAI (GPT)${NC}"
-echo -e "   ${DIM}    Google (Gemini)${NC}"
-echo -e "   ${DIM}    Other provider${NC}"
+echo -e "   ${WHITE}? Paste your opencode.ai API key${NC}"
+echo -e "   ${DIM}  ▸ sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx${NC}"
 echo ""
-ru "Стрелка ❯ показывает текущий выбор. Стрелками ↑↓ можно передвигать."
-ru "Нажимаете Enter — и выбор подтверждён."
-ru "Мы выбираем Anthropic Claude — он уже выделен."
-
-divider
-
-# --- Вопрос 2: API-ключ ---
-
-explain "ВОПРОС 2 из 4 — API-ключ." \
-  "" \
-  "API-ключ — это ваш персональный «пароль» для доступа к AI-модели." \
-  "Без него OpenClaw не сможет отправлять запросы к Claude/GPT/Gemini." \
-  "" \
-  "Где его взять?" \
-  "  • Anthropic Claude → зайдите на console.anthropic.com → API Keys → Create Key" \
-  "  • OpenAI GPT → зайдите на platform.openai.com → API Keys → Create" \
-  "  • Google Gemini → зайдите на aistudio.google.com → Get API Key" \
-  "" \
-  "Ключ — это длинная строка букв и цифр. Его показывают один раз при создании," \
-  "поэтому сразу скопируйте и сохраните в надёжном месте."
-
-echo -e "   ${WHITE}? Paste your Anthropic API key${NC}"
-echo -e "   ${DIM}  ▸ sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx${NC}"
-echo ""
-ru "Вы вставляете свой ключ (Ctrl+V или Cmd+V) и нажимаете Enter."
-ru "Ключ Anthropic начинается с 'sk-ant-' — если видите другой формат, значит не тот ключ."
+ru "Вы вставляете ключ (Ctrl+V или Cmd+V) и нажимаете Enter."
+ru "Ключ начинается с 'sk-'."
 ru ""
 ru "ВАЖНО: символы ключа НЕ отображаются при вводе (как пароль в терминале)."
 ru "Это нормально! Просто вставьте и нажмите Enter."
 ru ""
-ru "БЕЗОПАСНОСТЬ: никому не показывайте API-ключ. Он привязан к вашему аккаунту"
-ru "и вашей кредитке. Если кто-то узнает ключ — сможет тратить ваш баланс."
+ru "БЕЗОПАСНОСТЬ: никому не показывайте API-ключ. Он привязан к вашему"
+ru "аккаунту opencode.ai. Если утёк — сбросьте его в дашборде."
 
 divider
 
-# --- Вопрос 3: Gateway ---
+# --- Шаг 3: Gateway (автоматически) ---
 
-explain "ВОПРОС 3 из 4 — Режим gateway." \
+explain "GATEWAY — установка в фоне (без вопросов)" \
   "" \
-  "Gateway (шлюз) — это «сердце» OpenClaw. Он работает в фоне" \
-  "на вашем компьютере и делает всю работу:" \
+  "Gateway (шлюз) — это «сердце» OpenClaw. Работает в фоне на компьютере:" \
   "  • принимает сообщения из Telegram" \
-  "  • отправляет их в AI-модель" \
+  "  • отправляет их в AI-модель через opencode.ai" \
   "  • получает ответ и пересылает обратно пользователю" \
   "" \
-  "Local — значит, gateway работает прямо на этом компьютере." \
-  "Remote — если у вас уже есть сервер с gateway (продвинутый вариант)."
-
-echo -e "   ${WHITE}? Gateway mode${NC}"
-echo -e "   ${GREEN}  ❯ Local — run on this machine${NC}"
-echo -e "   ${DIM}    Remote — connect to existing gateway${NC}"
-echo ""
-ru "Выбираем Local — шлюз будет на вашем Mac или PC."
-ru "Пока компьютер включён — агенты отвечают. Выключили — ушли в офлайн."
-
-divider
-
-# --- Вопрос 4: Сервис ---
-
-explain "ВОПРОС 4 из 4 — Автозапуск." \
-  "" \
-  "Этот вопрос про автозапуск: хотите ли вы, чтобы gateway запускался" \
-  "автоматически при включении компьютера?" \
-  "" \
-  "Если Yes — вам не нужно будет каждый раз открывать терминал и вручную" \
-  "запускать программу. OpenClaw стартует тихо в фоне при загрузке системы." \
-  "" \
-  "Если No — придётся каждый раз запускать вручную командой 'openclaw gateway start'."
-
-echo -e "   ${WHITE}? Install gateway as system service?${NC}"
-echo -e "   ${GREEN}  ❯ Yes — start automatically on boot${NC}"
-echo -e "   ${DIM}    No — I'll start it manually${NC}"
-echo ""
-ru "Рекомендуем Yes. Тогда после перезагрузки компьютера агенты сразу онлайн."
-ru ""
-ru "На macOS это работает через LaunchAgent — системный механизм автозапуска."
-ru "На Linux — через systemd. OpenClaw сам определит и настроит нужный вариант."
+  "Скрипт автоматически:" \
+  "  • поставит gateway как системный сервис (macOS — LaunchAgent, Linux — systemd)" \
+  "  • включит автозапуск при загрузке компьютера" \
+  "  • стартует его прямо сейчас"
 
 divider
 
 # --- Результат onboard ---
 
 explain "Готово! OpenClaw создал конфигурацию и запустил gateway:" \
-  "Вот что вы увидите после ответов на все вопросы —"
+  "Вот что вы увидите после ввода ключа —"
 
 echo -e "   ${WHITE}✓ Config created: ~/.openclaw/openclaw.json${NC}"
 ru "Создан главный файл настроек. Все параметры хранятся здесь — модель,"
@@ -780,12 +735,12 @@ show_cmd "openclaw status --all"
 echo ""
 terminal "OpenClaw 2026.4.9 (0512059)"
 terminal "Gateway: running (pid 12345)"
-terminal "Model: anthropic/claude-sonnet-4-6"
+terminal "Model: opencode/kimi-k2.5"
 terminal "Channels: 0 configured"
 terminal "Agents: 1 (main)"
 terminal "Sessions: 0 active"
 echo ""
-ru "'Model: anthropic/claude-sonnet-4-6' — AI-модель, которую используют агенты."
+ru "'Model: opencode/kimi-k2.5' — AI-модель, которую используют агенты."
 ru "'Channels: 0 configured' — мессенджеры ещё не подключены. Сделаем на следующем шаге."
 ru "'Agents: 1 (main)' — есть один агент по умолчанию. Скоро создадим ещё."
 ru "'Sessions: 0 active' — нет активных разговоров (никто ещё не писал)."
@@ -956,7 +911,7 @@ show_cmd "openclaw agents add copywriter"
 echo ""
 terminal "✓ Agent created: copywriter"
 terminal "  Workspace: ~/.openclaw/agents/copywriter"
-terminal "  Model: anthropic/claude-sonnet-4-6 (inherited from defaults)"
+terminal "  Model: opencode/kimi-k2.5 (inherited from defaults)"
 echo ""
 ru "'Agent created' — агент создан. Теперь он существует в системе."
 ru "'Workspace' — у агента появилась своя рабочая папка для сессий и памяти."
@@ -984,8 +939,8 @@ explain "Посмотрим список всех агентов:"
 show_cmd "openclaw agents list"
 echo ""
 terminal "ID           Name         Model                         Bindings"
-terminal "main         Main         anthropic/claude-sonnet-4-6   -"
-terminal "copywriter   Copywriter   anthropic/claude-sonnet-4-6   telegram"
+terminal "main         Main         opencode/kimi-k2.5   -"
+terminal "copywriter   Copywriter   opencode/kimi-k2.5   telegram"
 echo ""
 ru "'main' — агент по умолчанию, создаётся автоматически. Пока ни к чему не привязан."
 ru "'copywriter' — наш новый агент, привязан к каналу telegram."
@@ -999,7 +954,7 @@ explain "Переключение AI-моделей." \
   "или индивидуально (для конкретного агента)."
 
 show_cmd "# Модель для всех агентов по умолчанию:"
-show_cmd 'openclaw config set agents.defaults.model.primary "anthropic/claude-sonnet-4-6"'
+show_cmd 'openclaw config set agents.defaults.model.primary "opencode/kimi-k2.5"'
 echo ""
 show_cmd "# Персональная модель для одного агента:"
 show_cmd "openclaw config set 'agents.list[1].model' '{\"primary\":\"openai/gpt-4o\"}' --strict-json"
@@ -1536,36 +1491,26 @@ pause
 step_header "R3" "ONBOARDING — НАСТРОЙКА"
 
 if [[ "$DRY_RUN" == true ]]; then
-  explain "Запускаем onboard — интерактивный мастер настройки." \
+  explain "Настраиваем OpenClaw напрямую через CLI." \
     "" \
-    "В реальной установке откроется интерактивное меню." \
-    "Вы будете отвечать на вопросы стрелками ↑↓ и Enter."
-
-  show_cmd "openclaw onboard"
-  echo ""
+    "Мы не запускаем интерактивный 'openclaw onboard' — он имеет баги." \
+    "Вместо этого скрипт сам создаёт конфигурацию и спрашивает только одно:" \
+    "ваш API-ключ из opencode.ai."
 
   sleep 0.5
-  echo -e "   ${WHITE}? Select your AI provider${NC}"
-  echo -e "   ${GREEN}  ❯ Anthropic (Claude) — recommended${NC}"
+  echo -e "   ${WHITE}? Paste your opencode.ai API key${NC}"
+  echo -e "   ${DIM}  ▸ sk-••••••••••••••••••••••••••••••••${NC}"
   sleep 0.5
-  echo -e "   ${WHITE}? Paste your Anthropic API key${NC}"
-  echo -e "   ${DIM}  ▸ sk-ant-api03-••••••••••••••••${NC}"
-  sleep 0.5
-  echo -e "   ${WHITE}? Gateway mode${NC}"
-  echo -e "   ${GREEN}  ❯ Local — run on this machine${NC}"
-  sleep 0.5
-  echo -e "   ${WHITE}? Install gateway as system service?${NC}"
-  echo -e "   ${GREEN}  ❯ Yes — start automatically on boot${NC}"
   echo ""
-  sleep 0.5
+  terminal "✓ Auth profile saved: ~/.openclaw/agents/main/agent/auth-profiles.json"
+  terminal "✓ Default model: opencode/kimi-k2.5"
   terminal "✓ Config created: ~/.openclaw/openclaw.json"
-  terminal "✓ Workspace initialized: ~/.openclaw/workspace"
   terminal "✓ Gateway service installed"
   terminal "✓ Gateway started on port 18789"
   terminal "✓ Dashboard: http://127.0.0.1:18789"
   echo ""
-  ru "Мастер задал 4 вопроса, создал конфигурацию и запустил gateway."
-  ru "В реальной установке вам нужно будет вставить свой API-ключ."
+  ru "Скрипт записал ключ, поставил модель Kimi 2.5 (free) и запустил gateway."
+  ru "В реальной установке вам нужно будет вставить только один ключ."
 
   ok "Onboarding complete (симуляция)"
 else
@@ -1582,30 +1527,41 @@ else
       "" \
       "Поэтому мы настраиваем всё напрямую через CLI — быстрее и надёжнее." \
       "" \
-      "Вам нужен будет только один ввод: API-ключ Anthropic."
+      "Мы используем opencode.ai — умный прокси: один ключ → доступ к Claude," \
+      "GPT, Gemini, Grok, Kimi и 25+ другим моделям. Дешевле и удобнее," \
+      "чем регистрироваться у каждого провайдера по отдельности." \
+      "" \
+      "Вам нужен будет только один ввод: API-ключ из вашего opencode.ai workspace."
 
     divider
 
-    # ---- Выбор провайдера (упрощённый — Anthropic по умолчанию) ----
-    echo -e "   ${BOLD}${WHITE}Выберите AI-провайдера:${NC}"
-    echo ""
-    echo -e "   ${GREEN}1)${NC} Anthropic Claude ${DIM}(рекомендуется — лучшее качество для текстов)${NC}"
-    echo -e "   ${GREEN}2)${NC} OpenAI GPT      ${DIM}(дешевле, чуть быстрее)${NC}"
-    echo -e "   ${GREEN}3)${NC} Google Gemini   ${DIM}(бесплатный tier, мультимодальный)${NC}"
-    echo ""
-    echo -e "   ${DIM}Нажмите Enter для Anthropic (по умолчанию):${NC}"
-    read -r provider_choice
+    # ---- Провайдер фиксированный: opencode.ai ----
+    PROVIDER="opencode"
+    MODEL="opencode/kimi-k2.5"
+    KEY_URL="https://opencode.ai"
 
-    case "${provider_choice:-1}" in
-      2) PROVIDER="openai"; MODEL="openai/gpt-4o"; KEY_URL="https://platform.openai.com/api-keys"; KEY_PREFIX="sk-" ;;
-      3) PROVIDER="google"; MODEL="google/gemini-2.0-flash"; KEY_URL="https://aistudio.google.com/apikey"; KEY_PREFIX="" ;;
-      *) PROVIDER="anthropic"; MODEL="anthropic/claude-sonnet-4-6"; KEY_URL="https://console.anthropic.com/settings/keys"; KEY_PREFIX="sk-ant-" ;;
-    esac
+    echo -e "   ${BOLD}${WHITE}Получите API-ключ в opencode.ai:${NC}"
+    echo ""
+    echo -e "   ${CYAN}1.${NC} Откройте ${BOLD}https://opencode.ai${NC}"
+    echo -e "   ${CYAN}2.${NC} Зарегистрируйтесь или войдите в свой Workspace"
+    echo -e "   ${CYAN}3.${NC} Найдите раздел ${BOLD}API Keys${NC} → создайте новый ключ"
+    echo -e "   ${CYAN}4.${NC} Скопируйте его (формат: sk-...)"
+    echo ""
+
+    # Автоматически открываем браузер
+    if command -v open >/dev/null 2>&1; then
+      open "$KEY_URL" &>/dev/null &
+      echo -e "   ${DIM}✓ Открыл opencode.ai в браузере${NC}"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$KEY_URL" &>/dev/null &
+      echo -e "   ${DIM}✓ Открыл opencode.ai в браузере${NC}"
+    fi
 
     echo ""
-    explain "Выбран: ${PROVIDER}. Модель: ${MODEL}" \
+    explain "Модель по умолчанию: ${BOLD}${MODEL}${NC} (Kimi 2.5 — бесплатный tariff)" \
       "" \
-      "Получите API-ключ здесь: ${KEY_URL}" \
+      "После установки можно переключить на любую другую модель одной командой." \
+      "Список всех доступных: openclaw models list --all | grep opencode" \
       "" \
       "ВАЖНО: ключ — это пароль. Никому не показывайте, не публикуйте в git."
 
@@ -1613,7 +1569,7 @@ else
 
     # ---- Ввод API-ключа (скрытый) ----
     while true; do
-      echo -e "   ${BOLD}${WHITE}Вставьте API-ключ и нажмите Enter:${NC}"
+      echo -e "   ${BOLD}${WHITE}Вставьте API-ключ opencode.ai и нажмите Enter:${NC}"
       echo -e "   ${DIM}(при вводе ничего отображаться не будет — это нормально)${NC}"
       read -rs API_KEY
       echo ""
@@ -1623,8 +1579,8 @@ else
         continue
       fi
 
-      if [[ -n "$KEY_PREFIX" && ! "$API_KEY" =~ ^${KEY_PREFIX} ]]; then
-        warn "Ключ должен начинаться с '${KEY_PREFIX}'. Проверьте, что скопировали правильный."
+      if [[ ! "$API_KEY" =~ ^sk- ]]; then
+        warn "Ключ opencode.ai обычно начинается с 'sk-'. Проверьте, что скопировали правильный."
         echo -e "   ${DIM}Продолжить всё равно? [y/n]${NC}"
         read -r force_key
         [[ "$force_key" != "y" && "$force_key" != "Y" ]] && continue
@@ -1636,29 +1592,30 @@ else
     echo -e "   ${GREEN}✓ Ключ получен (${#API_KEY} символов)${NC}"
     echo ""
 
-    # ---- Создаём ~/.openclaw и конфиг напрямую ----
+    # ---- Создаём auth-profiles.json для main-агента ----
     explain "Создаю конфигурацию OpenClaw..."
 
-    mkdir -p "$HOME/.openclaw"
+    AUTH_DIR="$HOME/.openclaw/agents/main/agent"
+    mkdir -p "$AUTH_DIR"
+    AUTH_FILE="$AUTH_DIR/auth-profiles.json"
 
-    # Записываем API-ключ в .env (OpenClaw читает его оттуда)
-    case "$PROVIDER" in
-      anthropic) ENV_VAR="ANTHROPIC_API_KEY" ;;
-      openai)    ENV_VAR="OPENAI_API_KEY" ;;
-      google)    ENV_VAR="GOOGLE_API_KEY" ;;
-    esac
-
-    # Создаём .env если нет, дописываем или заменяем ключ
-    ENV_FILE="$HOME/.openclaw/.env"
-    touch "$ENV_FILE"
-    chmod 600 "$ENV_FILE"
-    if grep -q "^${ENV_VAR}=" "$ENV_FILE" 2>/dev/null; then
-      # Заменяем существующий ключ
-      sed -i.bak "s|^${ENV_VAR}=.*|${ENV_VAR}=${API_KEY}|" "$ENV_FILE" && rm -f "${ENV_FILE}.bak"
-    else
-      echo "${ENV_VAR}=${API_KEY}" >> "$ENV_FILE"
-    fi
-    echo -e "   ${GREEN}✓${NC} API-ключ сохранён в ~/.openclaw/.env (режим 600 — только вы можете прочитать)"
+    cat > "$AUTH_FILE" <<AUTHEOF
+{
+  "version": 1,
+  "profiles": {
+    "opencode:default": {
+      "type": "api_key",
+      "provider": "opencode",
+      "key": "$API_KEY"
+    }
+  },
+  "lastGood": {
+    "opencode": "opencode:default"
+  }
+}
+AUTHEOF
+    chmod 600 "$AUTH_FILE"
+    echo -e "   ${GREEN}✓${NC} API-ключ сохранён в ~/.openclaw/agents/main/agent/auth-profiles.json (режим 600)"
 
     # Устанавливаем модель по умолчанию
     openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null && \
@@ -1866,7 +1823,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   terminal "✓ Agent created: assistant"
   terminal "  Workspace: ~/.openclaw/agents/assistant"
-  terminal "  Model: anthropic/claude-sonnet-4-6 (inherited from defaults)"
+  terminal "  Model: opencode/kimi-k2.5 (inherited from defaults)"
   echo ""
   ru "Агент создан с рабочей папкой для сессий и памяти."
 
@@ -1970,7 +1927,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   terminal "OpenClaw 2026.4.9 (0512059)"
   terminal "Gateway: running (pid 54321)"
-  terminal "Model: anthropic/claude-sonnet-4-6"
+  terminal "Model: opencode/kimi-k2.5"
   terminal "Channels: 1 configured (telegram)"
   terminal "Agents: 2 (main, assistant)"
   terminal "Sessions: 0 active"

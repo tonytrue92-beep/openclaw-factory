@@ -64,7 +64,7 @@ OpenClaw — AI-шлюз, который соединяет мессенджер
 
 - **R1 — System Check**: проверка Node.js/npm/Homebrew/OpenClaw. Автоустановка того, чего нет.
 - **R2 — Install OpenClaw**: `npm install -g openclaw@latest` с ретраями на 3 попытки при ETIMEDOUT.
-- **R3 — Configuration** (НЕ onboard): выбор провайдера + API-ключ → запись в `~/.openclaw/.env`, `openclaw config set`, `openclaw gateway install && start`.
+- **R3 — Configuration** (НЕ onboard): провайдер фиксированный — **opencode.ai** (один ключ на все модели). Модель по умолчанию: `opencode/kimi-k2.5` (Kimi 2.5 free). Скрипт открывает `https://opencode.ai` в браузере, просит ключ (формат `sk-...`), пишет в `~/.openclaw/agents/main/agent/auth-profiles.json` (chmod 600) как профиль `opencode:default`, ставит `agents.defaults.model.primary = opencode/kimi-k2.5`, запускает gateway.
 - **R4 — Telegram Bot**: ввод токена от @BotFather → проверка через Telegram API → `openclaw channels add` → ввод Telegram user ID владельца → настройка allowlist.
 - **R5 — Create Agent**: создание агента + привязка к Telegram.
 - **R6 — Final Check**: `openclaw status --all`, `openclaw channels status --probe`, финальный экран + troubleshooting-блок.
@@ -79,7 +79,7 @@ OpenClaw — AI-шлюз, который соединяет мессенджер
 | **nvm в shell rc** | append в `~/.zshrc`, `~/.bashrc`, `~/.bash_profile` (блок помечен `openclaw-factory installer`) | — |
 | **Homebrew** (macOS) | официальный installer, `brew shellenv` в `~/.zprofile`, `~/.bash_profile` | `/opt/homebrew/` (Apple Silicon) или `/usr/local/` (Intel) |
 | **OpenClaw CLI** | `npm install -g openclaw@latest` с ретраями | глобальный npm prefix |
-| **API-ключ** | запись в `~/.openclaw/.env` с chmod 600 | переменные: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` |
+| **API-ключ opencode.ai** | запись в `~/.openclaw/agents/main/agent/auth-profiles.json` (chmod 600) как профиль `opencode:default` с `type: api_key`, `provider: opencode`, `key: sk-...` | доп. env-переменные не используются |
 | **Gateway-сервис** | `openclaw gateway install` | macOS — LaunchAgent, Linux — systemd |
 | **Конфиг OpenClaw** | `openclaw config set ...` | `~/.openclaw/openclaw.json` (JSON5) |
 
@@ -203,7 +203,7 @@ openclaw doctor --fix --yes              # автопочинка
 - Gateway не запущен → `openclaw gateway start`
 - Агент не привязан к каналу → `openclaw agents bind --agent <name> --bind telegram`
 - Pairing-политика не одобрила пользователя (см. 5.4)
-- API-ключ невалидный → проверить в `~/.openclaw/.env`, сбросить на действующий
+- API-ключ opencode.ai невалидный/истёк → проверить в `~/.openclaw/agents/main/agent/auth-profiles.json`, при необходимости сбросить ключ в дашборде opencode.ai и вписать заново
 
 ### 5.7. `Unknown model: <провайдер/модель>`
 
@@ -295,7 +295,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-fac
 
 **Безопасность на VPS:**
 - Не устанавливать под root — создать отдельного пользователя
-- API-ключи хранятся в `~/.openclaw/.env` с chmod 600
+- API-ключ opencode.ai хранится в `~/.openclaw/agents/main/agent/auth-profiles.json` с chmod 600
 - Если много клиентов — настроить `dmPolicy=allowlist` с жёстким списком ID
 
 ---
@@ -305,9 +305,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-fac
 ```
 ~/.openclaw/
 ├── openclaw.json              # основной конфиг (JSON5)
-├── .env                       # API-ключи (chmod 600)
 ├── agents/                    # рабочие папки агентов
 │   └── <имя>/
+│       ├── agent/
+│       │   └── auth-profiles.json  # API-ключи (chmod 600, тип api_key)
 │       ├── sessions/          # сессии диалогов
 │       └── memory/            # долгосрочная память
 ├── memory/                    # shared embedding memory
