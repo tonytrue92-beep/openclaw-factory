@@ -2164,6 +2164,49 @@ WSEOF
   ok "Ассистент '${AGENT_ID}' создан и готов к работе!"
 fi
 
+# ─── Ставим helper-команду openclaw-switch-model ────────────────────────
+explain "Устанавливаем helper-команду для быстрой смены модели..."
+
+HELPER_DIR="$HOME/.openclaw/bin"
+HELPER_PATH="$HELPER_DIR/openclaw-switch-model"
+mkdir -p "$HELPER_DIR"
+
+# Скачиваем актуальную версию helper из репы
+HELPER_URL="https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/openclaw-switch-model.sh"
+if curl -fsSL "$HELPER_URL" -o "$HELPER_PATH" 2>/dev/null; then
+  chmod +x "$HELPER_PATH"
+  echo -e "   ${GREEN}✓${NC} Установлен: ${HELPER_PATH}"
+else
+  echo -e "   ${YELLOW}○${NC} Не смог скачать helper — пропускаю (не критично)"
+  HELPER_PATH=""
+fi
+
+# Добавляем ~/.openclaw/bin в PATH, если ещё нет
+if [[ -n "$HELPER_PATH" ]]; then
+  SHELL_RC=""
+  case "${SHELL##*/}" in
+    zsh)   SHELL_RC="$HOME/.zshrc" ;;
+    bash)  SHELL_RC="$HOME/.bashrc" ;;
+  esac
+  if [[ -n "$SHELL_RC" ]] && [[ -f "$SHELL_RC" ]]; then
+    if ! grep -qF '.openclaw/bin' "$SHELL_RC" 2>/dev/null; then
+      {
+        echo ""
+        echo "# OpenClaw helper scripts"
+        echo 'export PATH="$HOME/.openclaw/bin:$PATH"'
+      } >> "$SHELL_RC"
+      echo -e "   ${GREEN}✓${NC} Добавлен в PATH через ${SHELL_RC}"
+      echo -e "   ${DIM}   (применится в новых терминалах)${NC}"
+    else
+      echo -e "   ${GREEN}✓${NC} PATH уже содержит ~/.openclaw/bin"
+    fi
+  fi
+  # Для текущей сессии
+  export PATH="$HOME/.openclaw/bin:$PATH"
+fi
+
+echo ""
+
 pause
 
 # ═══════════════════════════════════════════════════════════════
@@ -2345,7 +2388,12 @@ else
   # ─── Подсказка 1: сменить модель ───
   echo -e "   ${BOLD}${WHITE}▸ Хочу сменить модель (другой GPT/Claude/Gemini)${NC}"
   echo -e "   ${DIM}   Сейчас стоит: ${BOLD}${CURRENT_MODEL_CHECK:-opencode/minimax-m2.5-free}${NC}${DIM} (бесплатная).${NC}"
-  echo -e "   ${DIM}   Все модели видны внутри opencode.ai → раздел OpenCode Zen.${NC}"
+  echo ""
+  echo -e "   ${BOLD}${GREEN}   ⚡ БЫСТРЫЙ СПОСОБ — одна команда:${NC}"
+  echo -e "      ${GREEN}openclaw-switch-model${NC}                          ${DIM}# интерактивное меню${NC}"
+  echo -e "      ${GREEN}openclaw-switch-model opencode/claude-sonnet-4-5${NC}  ${DIM}# сразу на модель${NC}"
+  echo -e "      ${GREEN}openclaw-switch-model --list${NC}                   ${DIM}# показать все доступные${NC}"
+  echo -e "   ${DIM}   Helper сам поменяет конфиг, почистит сессии и перезапустит gateway.${NC}"
   echo ""
   echo -e "   ${DIM}   Примеры бесплатных моделей:${NC}"
   echo -e "      ${GREEN}opencode/minimax-m2.5-free${NC}         ${DIM}# текущая, быстрая и неплохая${NC}"
@@ -2357,14 +2405,11 @@ else
   echo -e "      ${GREEN}opencode/gpt-5-mini${NC}                ${DIM}# OpenAI, компромисс цена/качество${NC}"
   echo -e "      ${GREEN}opencode/gemini-2.5-pro${NC}            ${DIM}# Google, для длинного контекста${NC}"
   echo ""
-  echo -e "   ${DIM}   Как сменить (пример — MiniMax → Claude Sonnet 4.5):${NC}"
-  echo -e "      ${GREEN}openclaw config set agents.defaults.model.primary \"opencode/claude-sonnet-4-5\"${NC}"
-  echo -e "      ${GREEN}openclaw config set 'agents.list[0].model' '\"opencode/claude-sonnet-4-5\"' --strict-json${NC}"
-  echo -e "      ${GREEN}openclaw sessions cleanup --agent ${AGENT_ID:-assistant}${NC}  ${DIM}# обязательно: разные модели — разные tool-форматы${NC}"
-  echo -e "      ${GREEN}openclaw gateway restart${NC}"
-  echo ""
-  echo -e "   ${DIM}   Посмотреть весь список моделей:${NC}"
-  echo -e "      ${GREEN}openclaw models list --all${NC}"
+  echo -e "   ${DIM}   Если нужно руками (без helper) — 4 команды:${NC}"
+  echo -e "      ${DIM}openclaw config set agents.defaults.model.primary \"<модель>\"${NC}"
+  echo -e "      ${DIM}openclaw config set 'agents.list[0].model' '\"<модель>\"' --strict-json${NC}"
+  echo -e "      ${DIM}openclaw sessions cleanup --agent ${AGENT_ID:-assistant}${NC}"
+  echo -e "      ${DIM}openclaw gateway restart${NC}"
   echo ""
 
   divider

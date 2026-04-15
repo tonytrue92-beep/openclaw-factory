@@ -130,6 +130,16 @@ openclaw sessions cleanup          # Очистка сессий агентов
 openclaw gateway restart           # Перезапуск шлюза
 ```
 
+### Helper-команды (ставятся вместе с установщиком)
+
+```bash
+openclaw-switch-model                                  # интерактивное меню смены модели
+openclaw-switch-model opencode/claude-sonnet-4-5       # сразу на указанную модель
+openclaw-switch-model --list                           # показать все доступные
+```
+
+Helper сам меняет дефолтную модель, переписывает override'ы у всех агентов, чистит сессии и перезапускает gateway — одной командой вместо четырёх. Живёт в `~/.openclaw/bin/`.
+
 ---
 
 ## 📚 Ссылки
