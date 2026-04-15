@@ -2334,6 +2334,91 @@ else
   echo ""
 
   # ═══════════════════════════════════════════════════════════════
+  #  ПОДСКАЗКИ — что клиенты спрашивают сразу после установки
+  # ═══════════════════════════════════════════════════════════════
+  echo ""
+  echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${BOLD}${CYAN}  💡 ПОДСКАЗКИ — самые частые вопросы после установки${NC}"
+  echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo ""
+
+  # ─── Подсказка 1: сменить модель ───
+  echo -e "   ${BOLD}${WHITE}▸ Хочу сменить модель (другой GPT/Claude/Gemini)${NC}"
+  echo -e "   ${DIM}   Сейчас стоит: ${BOLD}${CURRENT_MODEL_CHECK:-opencode/minimax-m2.5-free}${NC}${DIM} (бесплатная).${NC}"
+  echo -e "   ${DIM}   Все модели видны внутри opencode.ai → раздел OpenCode Zen.${NC}"
+  echo ""
+  echo -e "   ${DIM}   Примеры бесплатных моделей:${NC}"
+  echo -e "      ${GREEN}opencode/minimax-m2.5-free${NC}         ${DIM}# текущая, быстрая и неплохая${NC}"
+  echo -e "      ${GREEN}opencode/grok-4-fast-free${NC}          ${DIM}# от xAI, для диалогов${NC}"
+  echo -e "      ${GREEN}opencode/kimi-dev-72b-free${NC}         ${DIM}# для кода и аналитики${NC}"
+  echo ""
+  echo -e "   ${DIM}   Примеры платных моделей (нужен биллинг на opencode.ai):${NC}"
+  echo -e "      ${GREEN}opencode/claude-sonnet-4-5${NC}         ${DIM}# премиум, самая умная${NC}"
+  echo -e "      ${GREEN}opencode/gpt-5-mini${NC}                ${DIM}# OpenAI, компромисс цена/качество${NC}"
+  echo -e "      ${GREEN}opencode/gemini-2.5-pro${NC}            ${DIM}# Google, для длинного контекста${NC}"
+  echo ""
+  echo -e "   ${DIM}   Как сменить (пример — MiniMax → Claude Sonnet 4.5):${NC}"
+  echo -e "      ${GREEN}openclaw config set agents.defaults.model.primary \"opencode/claude-sonnet-4-5\"${NC}"
+  echo -e "      ${GREEN}openclaw config set 'agents.list[0].model' '\"opencode/claude-sonnet-4-5\"' --strict-json${NC}"
+  echo -e "      ${GREEN}openclaw sessions cleanup --agent ${AGENT_ID:-assistant}${NC}  ${DIM}# обязательно: разные модели — разные tool-форматы${NC}"
+  echo -e "      ${GREEN}openclaw gateway restart${NC}"
+  echo ""
+  echo -e "   ${DIM}   Посмотреть весь список моделей:${NC}"
+  echo -e "      ${GREEN}openclaw models list --all${NC}"
+  echo ""
+
+  divider
+
+  # ─── Подсказка 2: поменять "характер" ассистента ───
+  echo -e "   ${BOLD}${WHITE}▸ Хочу изменить характер / стиль ответов ассистента${NC}"
+  echo -e "   ${DIM}   Личность агента живёт в двух файлах:${NC}"
+  echo -e "      ${GREEN}~/.openclaw/agents/${AGENT_ID:-assistant}/workspace/IDENTITY.md${NC}  ${DIM}# кто я, мой стиль${NC}"
+  echo -e "      ${GREEN}~/.openclaw/agents/${AGENT_ID:-assistant}/workspace/AGENTS.md${NC}    ${DIM}# рабочие правила${NC}"
+  echo ""
+  echo -e "   ${DIM}   Открыть в редакторе (любой текстовый):${NC}"
+  echo -e "      ${GREEN}open ~/.openclaw/agents/${AGENT_ID:-assistant}/workspace/IDENTITY.md${NC}"
+  echo ""
+  echo -e "   ${DIM}   После правки — не забудьте очистить сессию, чтобы изменения применились:${NC}"
+  echo -e "      ${GREEN}openclaw sessions cleanup --agent ${AGENT_ID:-assistant}${NC}"
+  echo ""
+
+  divider
+
+  # ─── Подсказка 3: добавить ещё один канал ───
+  echo -e "   ${BOLD}${WHITE}▸ Хочу подключить WhatsApp / Discord / Slack${NC}"
+  echo -e "   ${DIM}   OpenClaw поддерживает 30+ каналов. Добавляются тем же механизмом:${NC}"
+  echo -e "      ${GREEN}openclaw channels add --channel whatsapp${NC}   ${DIM}# через QR-код${NC}"
+  echo -e "      ${GREEN}openclaw channels add --channel discord${NC}    ${DIM}# через Bot Token${NC}"
+  echo -e "      ${GREEN}openclaw channels add --channel slack${NC}      ${DIM}# через OAuth${NC}"
+  echo ""
+  echo -e "   ${DIM}   После добавления — привязать агента к новому каналу:${NC}"
+  echo -e "      ${GREEN}openclaw agents bind --agent ${AGENT_ID:-assistant} --bind <channel>${NC}"
+  echo ""
+
+  divider
+
+  # ─── Подсказка 4: создать второго агента ───
+  echo -e "   ${BOLD}${WHITE}▸ Хочу завести второго агента (например, переводчика)${NC}"
+  echo -e "   ${DIM}   Один бот может вести несколько агентов — каждый со своей личностью и моделью.${NC}"
+  echo -e "      ${GREEN}openclaw agents add translator --workspace --model opencode/minimax-m2.5-free${NC}"
+  echo -e "      ${GREEN}openclaw agents bind --agent translator --bind telegram${NC}"
+  echo -e "   ${DIM}   Потом отредактировать IDENTITY.md у нового агента — задать роль.${NC}"
+  echo ""
+
+  divider
+
+  # ─── Подсказка 5: где что лежит ───
+  echo -e "   ${BOLD}${WHITE}▸ Где хранятся конфиги и как их бэкапить${NC}"
+  echo -e "      ${GREEN}~/.openclaw/openclaw.json${NC}       ${DIM}# главный конфиг${NC}"
+  echo -e "      ${GREEN}~/.openclaw/agents/<имя>/${NC}       ${DIM}# папка агента (workspace + sessions)${NC}"
+  echo -e "      ${GREEN}~/.openclaw/logs/${NC}               ${DIM}# логи gateway${NC}"
+  echo -e "      ${GREEN}~/.openclaw/backups/${NC}            ${DIM}# автобэкапы (хранятся 10 последних)${NC}"
+  echo ""
+  echo -e "   ${DIM}   Сделать бэкап вручную перед правками:${NC}"
+  echo -e "      ${GREEN}bash ~/.openclaw/backup.sh${NC}"
+  echo ""
+
+  # ═══════════════════════════════════════════════════════════════
   #  TROUBLESHOOTING — частые проблемы и решения
   # ═══════════════════════════════════════════════════════════════
   echo ""
