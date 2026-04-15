@@ -360,17 +360,22 @@ prompt_install_node() {
 ensure_gateway_healthy() {
   local label="${1:-gateway}"
 
+  # Отключаем set -e на время хелпера — нам важно прогнать ВСЕ шаги,
+  # даже если какой-то openclaw-вызов вернёт non-zero.
+  set +e
+
   # 1. gateway.mode=local — главный фикс
   local current_mode
   current_mode=$(openclaw config get gateway.mode 2>/dev/null | tr -d '\n" ')
   if [[ "$current_mode" != "local" ]]; then
-    openclaw config set gateway.mode local &>/dev/null && \
+    if openclaw config set gateway.mode local &>/dev/null; then
       echo -e "   ${GREEN}✓${NC} gateway.mode=local (локальный режим)"
+    fi
   fi
 
   # 2. Валидация конфига
   local validation
-  validation=$(openclaw config validate 2>&1 || true)
+  validation=$(openclaw config validate 2>&1)
   if echo "$validation" | grep -qiE "error|invalid|unrecognized"; then
     echo -e "   ${DIM}Чиню конфиг: openclaw doctor --fix --yes${NC}"
     openclaw doctor --fix --yes 2>&1 | tail -5 | while IFS= read -r line; do
@@ -387,6 +392,7 @@ ensure_gateway_healthy() {
 
   if echo "$status_out" | grep -qE "running|RPC probe: ok"; then
     echo -e "   ${GREEN}✓${NC} Gateway здоров"
+    set -e
     return 0
   fi
 
@@ -399,6 +405,7 @@ ensure_gateway_healthy() {
 
   if openclaw gateway status 2>&1 | grep -qE "running"; then
     echo -e "   ${GREEN}✓${NC} Gateway поднялся после перезапуска"
+    set -e
     return 0
   fi
 
@@ -407,6 +414,7 @@ ensure_gateway_healthy() {
   echo -e "   ${DIM}  openclaw doctor --fix --yes${NC}"
   echo -e "   ${DIM}  openclaw gateway restart${NC}"
   echo -e "   ${DIM}  openclaw logs --follow    # посмотреть что падает${NC}"
+  set -e
   return 1
 }
 
@@ -1655,7 +1663,7 @@ else
     # (частый кейс: onboard упал на полу-пути и оставил config без gateway.mode)
     echo ""
     echo -e "   ${DIM}Проверяю состояние конфига и gateway...${NC}"
-    ensure_gateway_healthy "existing"
+    ensure_gateway_healthy "existing" || true
   else
     explain "Настраиваем OpenClaw." \
       "" \
@@ -1754,28 +1762,31 @@ AUTHEOF
     chmod 600 "$AUTH_FILE"
     echo -e "   ${GREEN}✓${NC} API-ключ сохранён в ~/.openclaw/agents/main/agent/auth-profiles.json (режим 600)"
 
-    # Устанавливаем модель по умолчанию
-    openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null && \
+    # Устанавливаем модель по умолчанию (|| true — чтобы не убить скрипт)
+    if openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null; then
       echo -e "   ${GREEN}✓${NC} Модель по умолчанию: ${MODEL}"
+    fi
 
     # КРИТИЧНО: ставим gateway.mode=local ДО gateway install/start
     # (иначе gateway поднимется в непонятном режиме и закроется с 1006)
-    openclaw config set gateway.mode local &>/dev/null && \
+    if openclaw config set gateway.mode local &>/dev/null; then
       echo -e "   ${GREEN}✓${NC} gateway.mode=local"
+    fi
 
-    # Устанавливаем gateway как service (автозапуск)
+    # Устанавливаем gateway как service (автозапуск) — всё с || true,
+    # чтобы set -e не убил скрипт от лишней болтовни в stderr
     if ! openclaw gateway status 2>&1 | grep -q "running"; then
       echo -e "   ${DIM}Устанавливаю gateway как системный сервис...${NC}"
-      openclaw gateway install 2>&1 | tail -3 | while IFS= read -r line; do
+      { openclaw gateway install 2>&1 || true; } | tail -3 | while IFS= read -r line; do
         echo -e "   ${DIM}${line}${NC}"
       done
-      openclaw gateway start 2>&1 | tail -3 | while IFS= read -r line; do
+      { openclaw gateway start 2>&1 || true; } | tail -3 | while IFS= read -r line; do
         echo -e "   ${DIM}${line}${NC}"
       done
     fi
 
     # Полная проверка: mode + валидация + deep status + auto-recovery
-    ensure_gateway_healthy "fresh install"
+    ensure_gateway_healthy "fresh install" || true
 
     ok "OpenClaw настроен без всяких визардов!"
   fi
@@ -1878,7 +1889,7 @@ else
       fi
 
       echo -e "   ${DIM}Подключаю Telegram-канал...${NC}"
-      openclaw channels add --channel telegram --name "${BOT_NAME}" --token "${BOT_TOKEN}" 2>&1 | while IFS= read -r line; do
+      { openclaw channels add --channel telegram --name "${BOT_NAME}" --token "${BOT_TOKEN}" 2>&1 || true; } | while IFS= read -r line; do
         echo -e "   ${DIM}${line}${NC}"
       done
       echo ""
@@ -1918,9 +1929,13 @@ else
       TG_USER_ID=$(echo "$TG_USER_ID" | tr -cd '0-9')
 
       if [[ -n "$TG_USER_ID" ]]; then
-        openclaw config set channels.telegram.dmPolicy allowlist &>/dev/null
-        openclaw config set channels.telegram.allowlistAllowFrom "[\"${TG_USER_ID}\"]" &>/dev/null
-        openclaw gateway restart &>/dev/null
+        # ВАЖНО: все openclaw-команды с || true — чтобы случайный non-zero
+        # не убивал скрипт под `set -e` (именно из-за этого клиент после
+        # ввода ID попадал обратно в shell и думал, что бот «не подключился»).
+        # Правильный путь в schema: channels.telegram.allowFrom (array)
+        openclaw config set channels.telegram.dmPolicy allowlist &>/dev/null || true
+        openclaw config set channels.telegram.allowFrom "[\"${TG_USER_ID}\"]" &>/dev/null || true
+        openclaw gateway restart &>/dev/null || true
         echo -e "   ${GREEN}✓${NC} Allowlist настроен: ваш ID ${TG_USER_ID} добавлен"
         ru "Теперь можете сразу писать боту — он ответит без pairing-кодов."
         OWNER_TG_ID="$TG_USER_ID"
@@ -2040,11 +2055,11 @@ WSEOF
 
   echo -e "   ${DIM}Создаю агента (non-interactive)...${NC}"
   # shellcheck disable=SC2086
-  openclaw agents add "${AGENT_ID}" \
-    --non-interactive \
-    --workspace "$WORKSPACE_DIR" \
-    --model "opencode/kimi-k2.5" \
-    ${ADD_BIND_ARG} 2>&1 | while IFS= read -r line; do
+  { openclaw agents add "${AGENT_ID}" \
+      --non-interactive \
+      --workspace "$WORKSPACE_DIR" \
+      --model "opencode/kimi-k2.5" \
+      ${ADD_BIND_ARG} 2>&1 || true; } | while IFS= read -r line; do
     echo -e "   ${DIM}${line}${NC}"
   done
   echo ""
@@ -2065,7 +2080,7 @@ WSEOF
   fi
 
   echo -e "   ${DIM}Финальная проверка gateway и конфига...${NC}"
-  ensure_gateway_healthy "post-agent"
+  ensure_gateway_healthy "post-agent" || true
   echo ""
 
   ok "Ассистент '${AGENT_ID}' создан и готов к работе!"
@@ -2104,7 +2119,7 @@ if [[ "$DRY_RUN" == true ]]; then
   echo ""
   ru "Всё работает: gateway запущен, бот подключён, агент готов."
 else
-  openclaw status --all 2>&1 | while IFS= read -r line; do
+  { openclaw status --all 2>&1 || true; } | while IFS= read -r line; do
     echo -e "   ${line}"
   done
   echo ""
@@ -2114,7 +2129,7 @@ else
   if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
     explain "Проверяем Telegram-канал..."
     echo ""
-    openclaw channels status --probe 2>&1 | while IFS= read -r line; do
+    { openclaw channels status --probe 2>&1 || true; } | while IFS= read -r line; do
       echo -e "   ${line}"
     done
     echo ""
