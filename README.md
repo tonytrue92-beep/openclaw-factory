@@ -108,7 +108,7 @@ bash scripts/install-claude-proxy.sh --uninstall
 - **npm** — идёт вместе с Node.js
 - **macOS** или **Linux**
 - **Telegram-бот** — создаётся через [@BotFather](https://t.me/BotFather)
-- **API-ключ [opencode.ai](https://opencode.ai)** — один ключ даёт доступ ко всем моделям (Claude, GPT, Gemini, Grok, Kimi). По умолчанию установщик ставит бесплатную `opencode/kimi-k2.5`
+- **API-ключ [opencode.ai](https://opencode.ai)** — один ключ даёт доступ ко всем моделям (Claude, GPT, Gemini, Grok, Kimi, MiniMax). По умолчанию установщик ставит бесплатную `opencode/minimax-m2.5-free` (раздел **OpenCode Zen** → **MiniMax M2.5 Free**)
 
 ---
 

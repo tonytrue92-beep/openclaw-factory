@@ -744,7 +744,7 @@ explain "ПРОВАЙДЕР — opencode.ai" \
   "opencode.ai — один ключ ко всем моделям сразу. Как универсальная SIM-карта." \
   "Один счёт, один дашборд, легко менять модели." \
   "" \
-  "По умолчанию мы ставим ${BOLD}Kimi 2.5 (free tariff)${NC} —" \
+  "По умолчанию мы ставим ${BOLD}Minimax 2.5 (free tariff)${NC} —" \
   "работает без оплаты, хорошо справляется с повседневными задачами." \
   "Если захотите Claude или GPT — одна команда, и вы на другой модели."
 
@@ -757,10 +757,13 @@ explain "ВОПРОС — API-ключ opencode.ai" \
   "API-ключ — это ваш персональный «пароль» для доступа к моделям." \
   "" \
   "Где его взять:" \
-  "  ${CYAN}1.${NC} Откройте ${BOLD}https://opencode.ai${NC}" \
-  "  ${CYAN}2.${NC} Зарегистрируйтесь или войдите" \
-  "  ${CYAN}3.${NC} Зайдите в свой Workspace → API Keys → Create Key" \
-  "  ${CYAN}4.${NC} Скопируйте ключ (формат: sk-...)" \
+  "  ${CYAN}1.${NC} Откройте ${BOLD}https://opencode.ai${NC} (браузер сам откроется в реальной установке)" \
+  "  ${CYAN}2.${NC} Зарегистрируйтесь (можно через Google) или войдите" \
+  "  ${CYAN}3.${NC} Выберите провайдера ${BOLD}OpenCode${NC}" \
+  "  ${CYAN}4.${NC} Перейдите в раздел ${BOLD}OpenCode Zen${NC}" \
+  "  ${CYAN}5.${NC} В списке моделей выберите ${BOLD}${GREEN}MiniMax M2.5 (Free)${NC} — бесплатный тариф" \
+  "  ${CYAN}6.${NC} ${BOLD}API Keys${NC} → ${BOLD}Create new key${NC}" \
+  "  ${CYAN}7.${NC} Скопируйте ключ (формат: sk-...)" \
   "" \
   "В реальной установке скрипт автоматически откроет opencode.ai в браузере."
 
@@ -874,12 +877,12 @@ show_cmd "openclaw status --all"
 echo ""
 terminal "OpenClaw 2026.4.9 (0512059)"
 terminal "Gateway: running (pid 12345)"
-terminal "Model: opencode/kimi-k2.5"
+terminal "Model: opencode/minimax-m2.5-free"
 terminal "Channels: 0 configured"
 terminal "Agents: 1 (main)"
 terminal "Sessions: 0 active"
 echo ""
-ru "'Model: opencode/kimi-k2.5' — AI-модель, которую используют агенты."
+ru "'Model: opencode/minimax-m2.5-free' — AI-модель, которую используют агенты."
 ru "'Channels: 0 configured' — мессенджеры ещё не подключены. Сделаем на следующем шаге."
 ru "'Agents: 1 (main)' — есть один агент по умолчанию. Скоро создадим ещё."
 ru "'Sessions: 0 active' — нет активных разговоров (никто ещё не писал)."
@@ -1050,7 +1053,7 @@ show_cmd "openclaw agents add copywriter"
 echo ""
 terminal "✓ Agent created: copywriter"
 terminal "  Workspace: ~/.openclaw/agents/copywriter"
-terminal "  Model: opencode/kimi-k2.5 (inherited from defaults)"
+terminal "  Model: opencode/minimax-m2.5-free (inherited from defaults)"
 echo ""
 ru "'Agent created' — агент создан. Теперь он существует в системе."
 ru "'Workspace' — у агента появилась своя рабочая папка для сессий и памяти."
@@ -1078,8 +1081,8 @@ explain "Посмотрим список всех агентов:"
 show_cmd "openclaw agents list"
 echo ""
 terminal "ID           Name         Model                         Bindings"
-terminal "main         Main         opencode/kimi-k2.5   -"
-terminal "copywriter   Copywriter   opencode/kimi-k2.5   telegram"
+terminal "main         Main         opencode/minimax-m2.5-free   -"
+terminal "copywriter   Copywriter   opencode/minimax-m2.5-free   telegram"
 echo ""
 ru "'main' — агент по умолчанию, создаётся автоматически. Пока ни к чему не привязан."
 ru "'copywriter' — наш новый агент, привязан к каналу telegram."
@@ -1093,7 +1096,7 @@ explain "Переключение AI-моделей." \
   "или индивидуально (для конкретного агента)."
 
 show_cmd "# Модель для всех агентов по умолчанию:"
-show_cmd 'openclaw config set agents.defaults.model.primary "opencode/kimi-k2.5"'
+show_cmd 'openclaw config set agents.defaults.model.primary "opencode/minimax-m2.5-free"'
 echo ""
 show_cmd "# Персональная модель для одного агента:"
 show_cmd "openclaw config set 'agents.list[1].model' '{\"primary\":\"openai/gpt-4o\"}' --strict-json"
@@ -1642,13 +1645,13 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   echo ""
   terminal "✓ Auth profile saved: ~/.openclaw/agents/main/agent/auth-profiles.json"
-  terminal "✓ Default model: opencode/kimi-k2.5"
+  terminal "✓ Default model: opencode/minimax-m2.5-free"
   terminal "✓ Config created: ~/.openclaw/openclaw.json"
   terminal "✓ Gateway service installed"
   terminal "✓ Gateway started on port 18789"
   terminal "✓ Dashboard: http://127.0.0.1:18789"
   echo ""
-  ru "Скрипт записал ключ, поставил модель Kimi 2.5 (free) и запустил gateway."
+  ru "Скрипт записал ключ, поставил модель Minimax 2.5 (free) и запустил gateway."
   ru "В реальной установке вам нужно будет вставить только один ключ."
 
   ok "Onboarding complete (симуляция)"
@@ -1667,31 +1670,29 @@ else
   else
     explain "Настраиваем OpenClaw." \
       "" \
-      "Раньше здесь запускался 'openclaw onboard' — интерактивный мастер." \
-      "Но он имеет баги: циклится на выборе каналов, не всегда реагирует на стрелки." \
-      "" \
-      "Поэтому мы настраиваем всё напрямую через CLI — быстрее и надёжнее." \
-      "" \
-      "Мы используем opencode.ai — умный прокси: один ключ → доступ к Claude," \
-      "GPT, Gemini, Grok, Kimi и 25+ другим моделям. Дешевле и удобнее," \
-      "чем регистрироваться у каждого провайдера по отдельности." \
-      "" \
-      "Вам нужен будет только один ввод: API-ключ из вашего opencode.ai workspace."
+      "Интерактивный мастер 'openclaw onboard' мы не запускаем — он имеет баги" \
+      "(циклится на выборе каналов, падает на старых конфигах с 'undefined.trim')." \
+      "Вместо него скрипт сам прописывает config и просит у вас только один ввод:" \
+      "API-ключ из opencode.ai."
 
     divider
 
-    # ---- Провайдер фиксированный: opencode.ai ----
+    # ---- Провайдер и модель ----
     PROVIDER="opencode"
-    MODEL="opencode/kimi-k2.5"
+    MODEL="opencode/minimax-m2.5-free"
     KEY_URL="https://opencode.ai"
 
-    echo -e "   ${BOLD}${WHITE}Получите API-ключ в opencode.ai:${NC}"
-    echo ""
-    echo -e "   ${CYAN}1.${NC} Откройте ${BOLD}https://opencode.ai${NC}"
-    echo -e "   ${CYAN}2.${NC} Зарегистрируйтесь или войдите в свой Workspace"
-    echo -e "   ${CYAN}3.${NC} Найдите раздел ${BOLD}API Keys${NC} → создайте новый ключ"
-    echo -e "   ${CYAN}4.${NC} Скопируйте его (формат: sk-...)"
-    echo ""
+    explain "Откуда взять ключ — пошагово:" \
+      "" \
+      "  ${BOLD}Шаг 1.${NC} Откройте ${BOLD}${CYAN}https://opencode.ai${NC} (браузер сейчас сам откроется)" \
+      "  ${BOLD}Шаг 2.${NC} Зарегистрируйтесь (можно через Google) или войдите" \
+      "  ${BOLD}Шаг 3.${NC} Выберите провайдера: ${BOLD}OpenCode${NC}" \
+      "  ${BOLD}Шаг 4.${NC} Перейдите в раздел ${BOLD}OpenCode Zen${NC}" \
+      "  ${BOLD}Шаг 5.${NC} В списке моделей выберите: ${BOLD}${GREEN}MiniMax M2.5 (Free)${NC}" \
+      "          ${DIM}→ это бесплатный тариф, токены не тратятся${NC}" \
+      "  ${BOLD}Шаг 6.${NC} Откройте ${BOLD}API Keys${NC} → ${BOLD}Create new key${NC}" \
+      "  ${BOLD}Шаг 7.${NC} Скопируйте ключ (формат: sk-...)" \
+      "  ${BOLD}Шаг 8.${NC} Вернитесь сюда и вставьте его ниже"
 
     # Автоматически открываем браузер
     if command -v open >/dev/null 2>&1; then
@@ -1703,12 +1704,15 @@ else
     fi
 
     echo ""
-    explain "Модель по умолчанию: ${BOLD}${MODEL}${NC} (Kimi 2.5 — бесплатный tariff)" \
+    explain "Почему именно MiniMax 2.5 Free:" \
       "" \
-      "После установки можно переключить на любую другую модель одной командой." \
-      "Список всех доступных: openclaw models list --all | grep opencode" \
+      "  • ${BOLD}Бесплатно${NC} — не нужно платить за каждое сообщение" \
+      "  • Подходит для текстовых задач (контекст 200k)" \
+      "  • Всегда можно переключиться на платную модель одной командой:" \
+      "    ${DIM}openclaw config set agents.defaults.model.primary opencode/gpt-5.4${NC}" \
+      "  • Посмотреть всё: ${DIM}openclaw models list --all | grep opencode${NC}" \
       "" \
-      "ВАЖНО: ключ — это пароль. Никому не показывайте, не публикуйте в git."
+      "${YELLOW}ВАЖНО:${NC} ключ — это пароль. Никому не показывайте, не публикуйте в git."
 
     divider
 
@@ -1976,7 +1980,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   terminal "✓ Agent created: assistant"
   terminal "  Workspace: ~/.openclaw/agents/assistant"
-  terminal "  Model: opencode/kimi-k2.5 (inherited from defaults)"
+  terminal "  Model: opencode/minimax-m2.5-free (inherited from defaults)"
   echo ""
   ru "Агент создан с рабочей папкой для сессий и памяти."
 
@@ -2058,7 +2062,7 @@ WSEOF
   { openclaw agents add "${AGENT_ID}" \
       --non-interactive \
       --workspace "$WORKSPACE_DIR" \
-      --model "opencode/kimi-k2.5" \
+      --model "opencode/minimax-m2.5-free" \
       ${ADD_BIND_ARG} 2>&1 || true; } | while IFS= read -r line; do
     echo -e "   ${DIM}${line}${NC}"
   done
@@ -2103,7 +2107,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   terminal "OpenClaw 2026.4.9 (0512059)"
   terminal "Gateway: running (pid 54321)"
-  terminal "Model: opencode/kimi-k2.5"
+  terminal "Model: opencode/minimax-m2.5-free"
   terminal "Channels: 1 configured (telegram)"
   terminal "Agents: 2 (main, assistant)"
   terminal "Sessions: 0 active"
