@@ -1875,18 +1875,55 @@ else
   echo ""
   explain "Создаём агента '${AGENT_ID}'..."
 
-  echo -e "   ${DIM}Создаю агента...${NC}"
-  openclaw agents add "${AGENT_ID}" 2>&1 | while IFS= read -r line; do
+  # Создаём workspace и стартовые файлы
+  WORKSPACE_DIR="$HOME/.openclaw/workspace"
+  mkdir -p "$WORKSPACE_DIR"
+
+  # Минимальный стартовый набор файлов для нового агента
+  if [[ ! -f "$WORKSPACE_DIR/AGENTS.md" ]]; then
+    : > "$WORKSPACE_DIR/AGENTS.md"
+  fi
+  if [[ ! -f "$WORKSPACE_DIR/IDENTITY.md" ]]; then
+    cat > "$WORKSPACE_DIR/IDENTITY.md" <<'WSEOF'
+# Роль ассистента
+
+Ты — персональный AI-ассистент. Помогаешь пользователю с задачами,
+идеями и вопросами. Отвечаешь коротко и по делу, на русском языке.
+Если не знаешь — честно говоришь «не знаю».
+WSEOF
+  fi
+  echo -e "   ${GREEN}✓${NC} Workspace готов: ${WORKSPACE_DIR}"
+
+  # Строим флаги для agents add
+  ADD_BIND_ARG=""
+  if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
+    ADD_BIND_ARG="--bind telegram"
+  fi
+
+  echo -e "   ${DIM}Создаю агента (non-interactive)...${NC}"
+  # shellcheck disable=SC2086
+  openclaw agents add "${AGENT_ID}" \
+    --non-interactive \
+    --workspace "$WORKSPACE_DIR" \
+    --model "opencode/kimi-k2.5" \
+    ${ADD_BIND_ARG} 2>&1 | while IFS= read -r line; do
     echo -e "   ${DIM}${line}${NC}"
   done
   echo ""
 
+  # На всякий случай — дублируем bind для существующих агентов (если add не привязал)
   if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
-    echo -e "   ${DIM}Привязываю к Telegram...${NC}"
-    openclaw agents bind --agent "${AGENT_ID}" --bind telegram 2>&1 | while IFS= read -r line; do
-      echo -e "   ${DIM}${line}${NC}"
-    done
-    echo ""
+    openclaw agents bind --agent "${AGENT_ID}" --bind telegram &>/dev/null || true
+  fi
+
+  # Копируем auth-profiles.json из main в новый агент (чтобы opencode ключ работал)
+  MAIN_AUTH="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
+  NEW_AUTH_DIR="$HOME/.openclaw/agents/${AGENT_ID}/agent"
+  if [[ -f "$MAIN_AUTH" && "$AGENT_ID" != "main" ]]; then
+    mkdir -p "$NEW_AUTH_DIR"
+    cp "$MAIN_AUTH" "$NEW_AUTH_DIR/auth-profiles.json"
+    chmod 600 "$NEW_AUTH_DIR/auth-profiles.json"
+    echo -e "   ${GREEN}✓${NC} Auth-профиль opencode скопирован в агента ${AGENT_ID}"
   fi
 
   echo -e "   ${DIM}Проверяю gateway...${NC}"
