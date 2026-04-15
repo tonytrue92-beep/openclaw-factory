@@ -102,11 +102,17 @@ bash scripts/install-claude-proxy.sh --uninstall
 
 ---
 
+### `docs/windows-install.md` — Установка на Windows через WSL2
+
+Отдельная инструкция для пользователей Windows: как развернуть Ubuntu в WSL2 и запустить установщик внутри неё. Минимум 20 минут, включая перезагрузку.
+
+---
+
 ## 📋 Требования
 
 - **Node.js** >= 22.14 — [скачать с nodejs.org](https://nodejs.org)
 - **npm** — идёт вместе с Node.js
-- **macOS** или **Linux**
+- **macOS** или **Linux** (для **Windows** — см. [docs/windows-install.md](docs/windows-install.md), установка через WSL2)
 - **Telegram-бот** — создаётся через [@BotFather](https://t.me/BotFather)
 - **API-ключ [opencode.ai](https://opencode.ai)** — один ключ даёт доступ ко всем моделям (Claude, GPT, Gemini, Grok, Kimi, MiniMax). По умолчанию установщик ставит бесплатную `opencode/minimax-m2.5-free` (раздел **OpenCode Zen** → **MiniMax M2.5 Free**)
 
