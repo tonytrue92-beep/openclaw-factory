@@ -1657,17 +1657,91 @@ if [[ "$DRY_RUN" == true ]]; then
   ok "Onboarding complete (симуляция)"
 else
   if [[ -f "$HOME/.openclaw/openclaw.json" ]]; then
-    explain "OpenClaw уже настроен (нашёлся файл ~/.openclaw/openclaw.json)." \
-      "Пропускаем настройку и переходим к подключению Telegram-бота." \
-      "" \
-      "Если нужно перенастроить с нуля — удалите ~/.openclaw/openclaw.json и перезапустите."
+    # Смотрим что за модель сейчас стоит — чтобы поймать кейс
+    # «у меня Kimi / claude-sonnet, приходит 401 No payment method»
+    CURRENT_MODEL=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
+    EXPECTED_MODEL="opencode/minimax-m2.5-free"
 
-    # Даже при существующем конфиге — принудительно чиним критические поля
-    # (частый кейс: onboard упал на полу-пути и оставил config без gateway.mode)
+    explain "OpenClaw уже настроен — нашёлся файл ~/.openclaw/openclaw.json." \
+      "" \
+      "  Текущая модель по умолчанию: ${BOLD}${CURRENT_MODEL:-(не задана)}${NC}" \
+      "  Рекомендованная (бесплатная): ${BOLD}${GREEN}${EXPECTED_MODEL}${NC}"
+
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Что делать с существующей установкой?${NC}"
+    echo ""
+    echo -e "   ${BOLD}${GREEN}  1)${NC} ${BOLD}Оставить как есть${NC} — только прогнать health-check (${DIM}по умолчанию${NC})"
+    echo -e "   ${BOLD}${YELLOW}  2)${NC} ${BOLD}Перезаписать модель${NC} — поставить ${EXPECTED_MODEL} (если сейчас платная и 401)"
+    echo -e "   ${BOLD}${CYAN}  3)${NC} ${BOLD}Ввести новый API-ключ${NC} — перезаписать auth-profiles.json"
+    echo -e "   ${BOLD}${RED}  4)${NC} ${BOLD}Полный сброс${NC} — config + credentials + sessions (начать с нуля)"
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Выбор [1/2/3/4]:${NC}"
+    read -r RECONFIG_CHOICE
+    RECONFIG_CHOICE="${RECONFIG_CHOICE:-1}"
+
+    case "$RECONFIG_CHOICE" in
+      2)
+        # Только модель
+        if openclaw config set agents.defaults.model.primary "$EXPECTED_MODEL" &>/dev/null; then
+          echo -e "   ${GREEN}✓${NC} Модель обновлена: ${EXPECTED_MODEL}"
+        else
+          warn "Не удалось сменить модель через config set. Попробуйте вручную:"
+          echo -e "   ${DIM}openclaw config set agents.defaults.model.primary ${EXPECTED_MODEL}${NC}"
+        fi
+        # И чиним индивидуальных агентов — они могут иметь override на платную модель
+        AGENT_COUNT=$(openclaw config get agents.list 2>/dev/null | grep -c '"id"' || echo 0)
+        if [[ "$AGENT_COUNT" -gt 0 ]]; then
+          for i in $(seq 0 $((AGENT_COUNT - 1))); do
+            openclaw config set "agents.list[${i}].model" "\"${EXPECTED_MODEL}\"" --strict-json &>/dev/null || true
+          done
+          echo -e "   ${GREEN}✓${NC} Переназначена модель у всех ${AGENT_COUNT} агентов"
+        fi
+        ;;
+      3)
+        # Новый ключ
+        AUTH_FILE="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
+        if [[ -f "$AUTH_FILE" ]]; then
+          mv "$AUTH_FILE" "${AUTH_FILE}.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+          echo -e "   ${DIM}✓ Старый auth-profiles.json забэкаплен${NC}"
+        fi
+        # Ниже выполнится блок ввода нового ключа — проставим флаг
+        NEED_KEY_INPUT=true
+        ;;
+      4)
+        # Полный сброс
+        echo ""
+        warn "Будет выполнен полный сброс: config + credentials + sessions."
+        echo -e "   ${DIM}Это удалит ВСЕ настройки OpenClaw. Действие необратимо.${NC}"
+        echo -e "   ${BOLD}${WHITE}Продолжить? [y/N]:${NC}"
+        read -r confirm_reset
+        if [[ "$confirm_reset" == "y" || "$confirm_reset" == "Y" ]]; then
+          BACKUP_DIR="$HOME/.openclaw-backup-$(date +%Y%m%d-%H%M%S)"
+          mv "$HOME/.openclaw" "$BACKUP_DIR" 2>/dev/null || true
+          echo -e "   ${GREEN}✓${NC} Старая установка перенесена в: ${BACKUP_DIR}"
+          # openclaw reset через CLI — если есть (может не работать после mv)
+          openclaw reset --scope config+creds+sessions --yes --non-interactive &>/dev/null || true
+          NEED_KEY_INPUT=true
+          # И запустим полный R3 с нуля
+          FULL_FRESH_SETUP=true
+        else
+          echo -e "   ${DIM}Сброс отменён, оставляю как есть.${NC}"
+          RECONFIG_CHOICE=1
+        fi
+        ;;
+      *)
+        echo -e "   ${DIM}Оставляем текущую установку.${NC}"
+        ;;
+    esac
+
+    # Всегда прогоняем health-check (как и раньше)
     echo ""
     echo -e "   ${DIM}Проверяю состояние конфига и gateway...${NC}"
     ensure_gateway_healthy "existing" || true
-  else
+  fi
+
+  # Если выбран ввод нового ключа ИЛИ полный сброс ИЛИ первая установка —
+  # запускаем блок opencode-ключа
+  if [[ ! -f "$HOME/.openclaw/openclaw.json" || "${NEED_KEY_INPUT:-false}" == true ]]; then
     explain "Настраиваем OpenClaw." \
       "" \
       "Интерактивный мастер 'openclaw onboard' мы не запускаем — он имеет баги" \
@@ -2189,14 +2263,67 @@ else
   fi
   echo ""
 
+  # ─── Живой end-to-end тест: пусть клиент напишет боту ──────────
+  if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
+    divider
+
+    explain "ФИНАЛЬНЫЙ ТЕСТ — проверим, что бот реально отвечает:" \
+      "" \
+      "  1. Откройте Telegram" \
+      "  2. Найдите своего бота: ${BOLD}@${BOT_USERNAME:-ваш_бот}${NC}" \
+      "  3. Отправьте ему: ${BOLD}/status${NC}" \
+      "  4. Подождите 5-10 секунд — бот должен ответить" \
+      "" \
+      "${DIM}Если ответил — всё работает.${NC}" \
+      "${DIM}Если молчит — нажмите Enter, я покажу диагностику.${NC}"
+
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Нажмите Enter когда проверите (или чтобы увидеть диагностику):${NC}"
+    read -r _bot_check || true
+
+    # Быстрая диагностика на случай «бот молчит»
+    echo ""
+    echo -e "   ${DIM}─── Диагностика (если бот не ответил) ───${NC}"
+    GW_CHECK=$(openclaw gateway status 2>&1 || true)
+    if echo "$GW_CHECK" | grep -qE "running"; then
+      echo -e "   ${GREEN}✓${NC} Gateway: running"
+    else
+      echo -e "   ${RED}✗${NC} Gateway не отвечает → запустите: ${BOLD}openclaw gateway restart${NC}"
+    fi
+
+    CH_CHECK=$(openclaw channels status --probe 2>&1 || true)
+    if echo "$CH_CHECK" | grep -qiE "ok|connected|audit: ok"; then
+      echo -e "   ${GREEN}✓${NC} Telegram-канал: connected"
+    else
+      echo -e "   ${YELLOW}○${NC} Telegram-канал странный. Посмотреть: ${BOLD}openclaw channels status --probe${NC}"
+    fi
+
+    if [[ -n "${OWNER_TG_ID:-}" ]]; then
+      echo -e "   ${GREEN}✓${NC} Allowlist: ваш ID ${OWNER_TG_ID} разрешён"
+    else
+      echo -e "   ${YELLOW}○${NC} Allowlist не настроен → бот ответит 'access not configured' + pairing-код"
+      echo -e "      ${DIM}Одобрить: openclaw pairing approve telegram <КОД>${NC}"
+    fi
+
+    CURRENT_MODEL_CHECK=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
+    if [[ "$CURRENT_MODEL_CHECK" == *"-free" ]]; then
+      echo -e "   ${GREEN}✓${NC} Модель: ${CURRENT_MODEL_CHECK} (бесплатная)"
+    else
+      echo -e "   ${YELLOW}○${NC} Модель: ${CURRENT_MODEL_CHECK:-не задана}"
+      echo -e "      ${DIM}Если 401 No payment method — вернуть на free:${NC}"
+      echo -e "      ${DIM}openclaw config set agents.defaults.model.primary opencode/minimax-m2.5-free${NC}"
+    fi
+    echo ""
+  fi
+
   echo -e "   ${BOLD}${WHITE}Что делать дальше:${NC}"
   if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
-    echo -e "   ${CYAN}1.${NC} Откройте Telegram и напишите боту @${BOT_USERNAME:-вашему боту} — он ответит!"
+    echo -e "   ${CYAN}1.${NC} Пиши боту @${BOT_USERNAME:-вашему_боту} что угодно — он AI, отвечает на всё"
   else
-    echo -e "   ${CYAN}1.${NC} Подключите Telegram: openclaw channels add --channel telegram --token ..."
+    echo -e "   ${CYAN}1.${NC} Подключить Telegram: ${DIM}openclaw channels add --channel telegram --token ...${NC}"
   fi
   echo -e "   ${CYAN}2.${NC} Dashboard: ${UNDERLINE:-}http://127.0.0.1:18789${NC}"
-  echo -e "   ${CYAN}3.${NC} Если что-то не работает: ${BOLD}openclaw doctor --fix${NC}"
+  echo -e "   ${CYAN}3.${NC} Если что-то сломалось: ${BOLD}openclaw doctor --fix${NC}"
   echo ""
 
   echo -e "   ${BOLD}${WHITE}Команды на каждый день:${NC}"
@@ -2280,6 +2407,23 @@ else
   echo -e "   ${DIM}   Решение: очистить сессии агента:${NC}"
   echo -e "      ${GREEN}openclaw sessions cleanup --agent <имя>${NC}"
   echo -e "      ${GREEN}openclaw sessions cleanup --all-agents${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}9. '401 No payment method' от бота${NC}"
+  echo -e "   ${DIM}   Причина: стоит платная модель, а на opencode нет биллинга.${NC}"
+  echo -e "   ${DIM}   Решение: переключить на бесплатную:${NC}"
+  echo -e "      ${GREEN}openclaw config set agents.defaults.model.primary opencode/minimax-m2.5-free${NC}"
+  echo -e "      ${GREEN}openclaw gateway restart${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}10. Хочу переустановить с нуля / не помню какой ключ вводил${NC}"
+  echo -e "   ${DIM}   Удаление openclaw.json — мало. Креды живут отдельно.${NC}"
+  echo -e "   ${DIM}   Полный сброс:${NC}"
+  echo -e "      ${GREEN}openclaw reset --scope config+creds+sessions --yes --non-interactive${NC}"
+  echo -e "   ${DIM}   Или мягкий возврат к настройке модели:${NC}"
+  echo -e "      ${GREEN}openclaw configure --section model${NC}"
+  echo -e "   ${DIM}   Или перезапустите установщик — он покажет меню:${NC}"
+  echo -e "      ${DIM}  1) оставить / 2) сменить модель / 3) новый ключ / 4) полный сброс${NC}"
   echo ""
 
   divider
