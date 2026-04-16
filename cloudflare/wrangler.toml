@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  Wrangler config for OpenClaw Factory auth worker
+#
+#  Деплой:
+#    1. npm install -g wrangler
+#    2. wrangler login
+#    3. wrangler kv:namespace create OPENCLAW_TOKENS
+#       → вставить выданный id в секцию [[kv_namespaces]] ниже
+#    4. wrangler secret put ADMIN_SECRET
+#       → ввести длинную случайную строку (хранится на стороне Cloudflare)
+#    5. wrangler deploy
+# ═══════════════════════════════════════════════════════════════════════
+
+name = "openclaw-factory-auth"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Вариант 1: бесплатный домен *.workers.dev
+# URL получится: https://openclaw-factory-auth.<аккаунт>.workers.dev
+workers_dev = true
+
+# Вариант 2: свой домен (раскомментировать + добавить в DNS)
+# routes = [
+#   { pattern = "auth.openclaw.ai/*", zone_name = "openclaw.ai" }
+# ]
+
+[[kv_namespaces]]
+binding = "OPENCLAW_TOKENS"
+id = "<вставить-id-после-wrangler-kv:namespace-create>"
+
+# ADMIN_SECRET задаётся через `wrangler secret put ADMIN_SECRET` (не хранится в файле)
