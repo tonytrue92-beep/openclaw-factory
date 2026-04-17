@@ -320,21 +320,37 @@ install_homebrew() {
   # ─── Предупреждение про невидимый sudo-пароль ───
   warn_about_sudo_prompt
 
-  echo -e "   ${DIM}Нажмите Enter чтобы продолжить установку Homebrew...${NC}"
+  # ─── Явная карта того, что увидит пользователь ───
+  # (Homebrew-скрипт интерактивный, делает ДВА запроса подряд — чтобы
+  # ученик не застрял ни на одном из них.)
+  echo -e "   ${BOLD}${WHITE}Что попросит Homebrew — по порядку:${NC}"
+  echo -e "   ${CYAN}1.${NC} ${BOLD}«Press RETURN/ENTER to continue»${NC} — нажмите ${BOLD}Enter${NC}"
+  echo -e "   ${CYAN}2.${NC} ${BOLD}«Password:»${NC} — введите пароль от Mac (символы ${BOLD}не видно${NC}!), Enter"
+  echo -e "   ${DIM}   Всё — дальше Homebrew сам скачает и установит, это 2-5 минут.${NC}"
+  echo ""
+  echo -e "   ${DIM}Нажмите Enter, когда будете готовы запустить установку Homebrew...${NC}"
   read -r
 
   echo ""
-  # Heartbeat в фоне, чтобы пользователь видел «я жив»
-  start_heartbeat "устанавливаю Homebrew" 30 300 &
-  local hb_pid=$!
+  echo -e "   ${BOLD}${MAGENTA}━━━ передаю управление Homebrew installer ━━━${NC}"
+  echo ""
 
+  # ВАЖНО: запускаем БЕЗ pipe, чтобы не убить интерактивность Homebrew.
+  # Раньше здесь было `... | tail -10 | while read` — это ломало stdin
+  # Homebrew, и он зависал на «Press RETURN/ENTER» (пользователь не видел
+  # приглашения из-за буфера tail, а даже если бы видел — pipe не давал
+  # ввести Enter в stdin установщика).
+  #
+  # Heartbeat тоже не запускаем: Homebrew сам болтлив и показывает прогресс,
+  # фоновое «я жив» только перебивало бы его вывод.
   set +e
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1 | tail -10 | while IFS= read -r line; do
-    echo -e "   ${DIM}${line}${NC}"
-  done
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  local brew_install_rc=$?
   set -e
 
-  stop_heartbeat "$hb_pid"
+  echo ""
+  echo -e "   ${BOLD}${MAGENTA}━━━ Homebrew installer завершён (rc=${brew_install_rc}) ━━━${NC}"
+  echo ""
 
   # ─── Проверка Xcode CLT после Homebrew install ───
   # Homebrew при установке иногда тянет CLT сам. Проверяем — если CLT не видны,
