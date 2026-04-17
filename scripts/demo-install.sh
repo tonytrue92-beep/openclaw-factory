@@ -221,19 +221,139 @@ install_node_via_nvm() {
   fi
 }
 
+# ─── Проверка admin-прав пользователя (macOS) ───────────────────
+#
+# Частый кейс: у ученика macOS-юзер без admin rights (рабочий Mac от
+# работодателя, гостевой аккаунт, родительский контроль). sudo такому
+# юзеру не даст ничего — и установка Homebrew упирается в тупик с
+# нечитаемой ошибкой «user needs to be an Administrator».
+#
+# Лучше ловим это ДО запуска Homebrew: возвращаем:
+#   0 — пользователь admin (всё ок)
+#   1 — не admin (нужно branching — skip/switch user)
+#   2 — проверка не применима (не macOS)
+is_macos_admin() {
+  [[ "$(uname)" != "Darwin" ]] && return 2
+  if id -Gn "$(whoami)" 2>/dev/null | grep -qw admin; then
+    return 0
+  fi
+  return 1
+}
+
+# ─── Предупреждение про невидимый sudo-пароль ───────────────────
+#
+# Самая массовая жалоба по Homebrew: «ввожу пароль, а ничего не
+# отображается — значит зависло?» Это нормальное поведение sudo,
+# но новички об этом не знают. Печатаем ПРЕДУПРЕЖДЕНИЕ до запуска.
+warn_about_sudo_prompt() {
+  echo ""
+  echo -e "   ${BOLD}${YELLOW}⚠️  Сейчас установщик попросит пароль от Mac${NC}"
+  echo -e "   ${DIM}   (тот, которым вы разблокируете компьютер — НЕ Apple ID)${NC}"
+  echo ""
+  echo -e "   ${BOLD}${WHITE}   Важно:${NC}"
+  echo -e "   ${WHITE}   • При вводе пароля ${BOLD}символы не будут отображаться${NC}"
+  echo -e "   ${WHITE}     ${DIM}— ни точек, ни звёздочек, ни курсора. Это нормально.${NC}"
+  echo -e "   ${WHITE}   • Просто наберите пароль вслепую и нажмите ${BOLD}Enter${NC}"
+  echo -e "   ${WHITE}   • Если ошиблись — наберите заново${NC}"
+  echo ""
+}
+
+# ─── Проверка Xcode Command Line Tools ──────────────────────────
+#
+# Homebrew на macOS внутри себя запускает `xcode-select --install`,
+# если CLT отсутствуют. Это вызывает GUI-диалог Apple и ставит
+# пакет на 1-3 гигабайта. Частая проблема: после установки
+# xcode-select не подхватывается в той же сессии терминала —
+# пользователю нужно закрыть и открыть терминал заново.
+#
+# Возвращает:
+#   0 — CLT установлены и видны
+#   1 — не установлены или не видны (нужен перезапуск терминала)
+check_xcode_clt() {
+  [[ "$(uname)" != "Darwin" ]] && return 0  # не macOS — не волнуемся
+  if xcode-select -p &>/dev/null; then
+    local clt_path
+    clt_path=$(xcode-select -p 2>/dev/null)
+    # Дополнительная проверка — путь должен существовать
+    [[ -d "$clt_path" ]] && return 0
+  fi
+  return 1
+}
+
 # Автоустановка Homebrew — нужен для многих скиллов OpenClaw (gh, ffmpeg, и т.д.)
 install_homebrew() {
+  # ─── Pre-check: admin rights ───
+  if ! is_macos_admin; then
+    local admin_status=$?
+    if [[ $admin_status -eq 1 ]]; then
+      echo ""
+      warn "Ваш пользователь macOS не в группе admin — sudo не сработает."
+      echo -e "   ${DIM}Homebrew требует права администратора для установки в /opt/homebrew.${NC}"
+      echo ""
+      echo -e "   ${BOLD}${WHITE}Что делать:${NC}"
+      echo -e "   ${CYAN}1.${NC} ${BOLD}Пропустить Homebrew${NC} — скрипт продолжит без него,"
+      echo -e "      ${DIM}часть скиллов (gh, ffmpeg) не установится, но бот заработает.${NC}"
+      echo -e "   ${CYAN}2.${NC} ${BOLD}Сменить пользователя${NC} — выйдите в macOS на admin-аккаунт"
+      echo -e "      ${DIM}и запустите скрипт снова.${NC}"
+      echo -e "   ${CYAN}3.${NC} ${BOLD}Поставить потом${NC} — инструкция: https://brew.sh"
+      echo ""
+      echo -e "   ${BOLD}${WHITE}Пропустить и продолжить без Homebrew? [Y/n]:${NC}"
+      read -r skip_brew
+      skip_brew="${skip_brew:-y}"
+      if [[ "$skip_brew" == "y" || "$skip_brew" == "Y" ]]; then
+        ru "Пропускаем Homebrew. Установить можно позже с admin-аккаунта."
+        return 0
+      else
+        echo -e "   ${DIM}Остановлено. Смените пользователя macOS на admin и запустите скрипт снова.${NC}"
+        exit 0
+      fi
+    fi
+  fi
+
   echo ""
   explain "Устанавливаю Homebrew..." \
     "Homebrew — пакетный менеджер для macOS/Linux. Многие скиллы OpenClaw" \
     "(github, video-frames, summarize и другие) требуют утилиты через brew." \
     "" \
-    "Установка займёт 2-5 минут, потребует пароль администратора."
+    "Установка займёт 2-5 минут, потребует пароль администратора Mac."
+
+  # ─── Предупреждение про невидимый sudo-пароль ───
+  warn_about_sudo_prompt
+
+  echo -e "   ${DIM}Нажмите Enter чтобы продолжить установку Homebrew...${NC}"
+  read -r
 
   echo ""
+  # Heartbeat в фоне, чтобы пользователь видел «я жив»
+  start_heartbeat "устанавливаю Homebrew" 30 300 &
+  local hb_pid=$!
+
+  set +e
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" 2>&1 | tail -10 | while IFS= read -r line; do
     echo -e "   ${DIM}${line}${NC}"
   done
+  set -e
+
+  stop_heartbeat "$hb_pid"
+
+  # ─── Проверка Xcode CLT после Homebrew install ───
+  # Homebrew при установке иногда тянет CLT сам. Проверяем — если CLT не видны,
+  # подсказываем перезапустить терминал.
+  if ! check_xcode_clt; then
+    echo ""
+    warn "Xcode Command Line Tools не видны в этой сессии терминала."
+    echo -e "   ${DIM}Возможные причины:${NC}"
+    echo -e "   ${DIM}  • CLT ещё ставятся в фоне (GUI-окно Apple)${NC}"
+    echo -e "   ${DIM}  • CLT поставлены, но PATH не обновился${NC}"
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Что сделать:${NC}"
+    echo -e "   ${CYAN}1.${NC} Дождитесь завершения GUI-окна Apple (если открылось)"
+    echo -e "   ${CYAN}2.${NC} Проверьте: ${GREEN}xcode-select -p${NC}"
+    echo -e "   ${CYAN}3.${NC} Если пусто — запустите: ${GREEN}xcode-select --install${NC}"
+    echo -e "   ${CYAN}4.${NC} Если уже стоит, но не видно — закройте терминал и откройте заново"
+    echo -e "   ${CYAN}5.${NC} Запустите скрипт снова"
+    echo ""
+  fi
 
   # Активируем brew в текущей сессии + прописываем в shell rc
   if [[ -x /opt/homebrew/bin/brew ]]; then
@@ -254,7 +374,9 @@ install_homebrew() {
   if command -v brew &>/dev/null; then
     echo -e "   ${GREEN}✓ Homebrew $(brew --version | head -1) установлен${NC}"
   else
-    warn "Homebrew установлен, но не виден в PATH. Откройте новый терминал."
+    warn "Homebrew установлен, но не виден в PATH этой сессии."
+    echo -e "   ${DIM}Это частый кейс — нужно закрыть терминал и открыть заново.${NC}"
+    echo -e "   ${DIM}После этого запустите скрипт снова — brew будет видно.${NC}"
   fi
 }
 
@@ -279,6 +401,103 @@ prompt_install_homebrew() {
   fi
 }
 
+# ─── Heartbeat-утилита для длинных шагов ────────────────────────
+#
+# Частая жалоба клиентов: «npm install завис, я 5 минут смотрю на пустой экран,
+# не понимаю — работает или умерло». Эта функция раз в N секунд печатает
+# строку «всё ещё качаю...» пока основной процесс жив.
+#
+# Использование:
+#   start_heartbeat "качаю зависимости" & HB_PID=$!
+#   <долгий процесс>
+#   stop_heartbeat $HB_PID
+start_heartbeat() {
+  local label="${1:-работаю}"
+  local interval="${2:-30}"   # каждые 30 сек
+  local hint_at="${3:-300}"   # через 5 мин — намекнуть что можно прервать
+  local started=$(date +%s)
+  while true; do
+    sleep "$interval"
+    local now=$(date +%s)
+    local elapsed=$((now - started))
+    if [[ $elapsed -ge $hint_at ]]; then
+      echo -e "   ${DIM}⏳ ${label} (${elapsed} сек)... если больше 10 минут молчит — Ctrl+C и проверьте сеть/VPN${NC}"
+    else
+      echo -e "   ${DIM}⏳ ${label} (${elapsed} сек)... я жив, просто процесс небыстрый${NC}"
+    fi
+  done
+}
+
+stop_heartbeat() {
+  local hb_pid="$1"
+  [[ -z "$hb_pid" ]] && return 0
+  kill "$hb_pid" 2>/dev/null || true
+  wait "$hb_pid" 2>/dev/null || true
+}
+
+# ─── Раздельная диагностика npm permissions ─────────────────────
+#
+# У новичков `EACCES` в npm — это ДВА разных случая, которые
+# визуально выглядят одинаково, но чинятся разными командами:
+#
+#   А) Глобальный install требует sudo (системный Node.js в /usr/local).
+#      Симптом: `npm ERR! EACCES: permission denied, mkdir '/usr/local/lib/node_modules/...'`
+#      Фикс:   `sudo npm install -g openclaw@latest`
+#
+#   Б) ~/.npm принадлежит root (артефакт прошлого sudo npm без -H).
+#      Симптом: `npm ERR! EACCES: permission denied, open '/Users/x/.npm/...'`
+#      Фикс:   `sudo chown -R $(id -u):$(id -g) ~/.npm`
+#
+# Смешивать их нельзя: команда из (А) не починит (Б), и наоборот.
+# Функция смотрит текст ошибки и печатает ровно ту команду, которая нужна.
+diagnose_npm_eacces() {
+  local err_log="$1"
+  local case_global=false
+  local case_cache=false
+
+  if grep -qE "EACCES.*node_modules|permission denied.*node_modules|EACCES.*(/usr/local|/opt)" "$err_log" 2>/dev/null; then
+    case_global=true
+  fi
+  if grep -qE "EACCES.*\.npm|permission denied.*\.npm|EACCES.*cache" "$err_log" 2>/dev/null; then
+    case_cache=true
+  fi
+
+  if [[ "$case_global" == false && "$case_cache" == false ]]; then
+    # Не похоже на permission — пусть выше скажет про сеть
+    return 1
+  fi
+
+  echo ""
+  warn "Права доступа npm сломаны. Разбираю по типу:"
+  echo ""
+
+  if [[ "$case_cache" == true ]]; then
+    echo -e "   ${BOLD}${RED}Случай Б: ${NC}${BOLD}~/.npm принадлежит root${NC}"
+    echo -e "   ${DIM}(вероятно кто-то раньше запустил 'sudo npm ...' — это сломало права на кэш)${NC}"
+    echo -e "   ${DIM}Фикс:${NC}"
+    echo -e "      ${GREEN}sudo chown -R \$(id -u):\$(id -g) ~/.npm${NC}"
+    echo ""
+  fi
+
+  if [[ "$case_global" == true ]]; then
+    echo -e "   ${BOLD}${RED}Случай А: ${NC}${BOLD}системный Node.js требует sudo для -g${NC}"
+    echo -e "   ${DIM}(у вас Node.js не через nvm, а через системный установщик)${NC}"
+    echo -e "   ${DIM}Фикс (одна из команд):${NC}"
+    echo -e "      ${GREEN}sudo npm install -g openclaw@latest${NC}"
+    echo -e "   ${DIM}Или перейти на nvm (правильнее, без sudo):${NC}"
+    echo -e "      ${GREEN}curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash${NC}"
+    echo -e "      ${GREEN}nvm install 22 && nvm use 22 && npm install -g openclaw@latest${NC}"
+    echo ""
+  fi
+
+  if [[ "$case_global" == true && "$case_cache" == true ]]; then
+    echo -e "   ${YELLOW}⚠ У вас сломаны ОБА случая. Сначала почините ~/.npm (Б), потом установку (А).${NC}"
+    echo ""
+  fi
+
+  return 0
+}
+
 # Устойчивая установка OpenClaw через npm — с ретраями и нормальными таймаутами
 install_openclaw_npm() {
   # Настраиваем npm для стабильной работы при плохой сети
@@ -290,6 +509,8 @@ install_openclaw_npm() {
   local attempt=1
   local max_attempts=3
   local rc=1
+  local err_log
+  err_log=$(mktemp -t openclaw-npm-err.XXXXXX)
 
   while [[ $attempt -le $max_attempts ]]; do
     if [[ $attempt -gt 1 ]]; then
@@ -298,20 +519,45 @@ install_openclaw_npm() {
       sleep 3
     fi
 
+    # Запускаем heartbeat в фоне, чтобы пользователь видел «я жив, качаю»
+    start_heartbeat "качаю зависимости OpenClaw" 30 300 &
+    local hb_pid=$!
+
     set +e
-    npm install -g openclaw@latest 2>&1 | tail -12 | while IFS= read -r line; do
+    # stdout → пользователю (последние 12 строк), stderr → в лог для диагностики
+    npm install -g openclaw@latest 2>"$err_log" | tail -12 | while IFS= read -r line; do
       echo -e "   ${DIM}${line}${NC}"
     done
     rc=${PIPESTATUS[0]}
     set -e
 
+    stop_heartbeat "$hb_pid"
+
     if [[ $rc -eq 0 ]] && command -v openclaw &>/dev/null; then
+      rm -f "$err_log"
       return 0
+    fi
+
+    # Если это НЕ network timeout, а permission — не имеет смысла ретраить,
+    # выходим сразу и показываем диагностику.
+    if grep -qE "EACCES|permission denied" "$err_log" 2>/dev/null; then
+      diagnose_npm_eacces "$err_log"
+      rm -f "$err_log"
+      return 2   # exit code «permission» — отличается от сетевого (=1)
     fi
 
     attempt=$((attempt + 1))
   done
 
+  # Сетевая ошибка после всех попыток — покажем последние строки stderr
+  if [[ -s "$err_log" ]]; then
+    echo ""
+    echo -e "   ${DIM}Последние строки ошибки:${NC}"
+    tail -5 "$err_log" | while IFS= read -r line; do
+      echo -e "   ${DIM}${line}${NC}"
+    done
+  fi
+  rm -f "$err_log"
   return 1
 }
 
@@ -416,6 +662,78 @@ ensure_gateway_healthy() {
   echo -e "   ${DIM}  openclaw logs --follow    # посмотреть что падает${NC}"
   set -e
   return 1
+}
+
+# ═══════════════════════════════════════════════════════════════
+#  Helper: согласованность provider+model у defaults и всех агентов
+# ═══════════════════════════════════════════════════════════════
+#
+# Контекст (из живых кейсов Саввы и Елены):
+#   • Пользователь выбирает MiniMax 2.5 Free, всё выглядит ok.
+#   • Но на реальный запрос прилетает «HTTP 401: Model is disabled»
+#     или «Invalid API key».
+#
+# Причины, которые мы реально видели в чате:
+#   1. agents.defaults.model.primary = opencode/minimax-m2.5-free,
+#      но agents.list[i].model = opencode/kimi-k2.5 (старый override)
+#   2. После нескольких кругов `configure --section model` auth-профиль
+#      остался в «opencode:default» с кривым ключом, а модель уже
+#      другая — схема «provider ok, model ok, а ключ сохранён на
+#      другой provider-id»
+#   3. Пользователь ввёл не то в «Provider id» vs «Profile id» в CLI,
+#      создал дубль — и два конфликтующих профиля
+#
+# Что делает этот helper:
+#   • смотрит, какая модель задана у defaults
+#   • проходит по всем agents.list[*].model — если расходится,
+#     приводит всех к default (устраняет кейс 1)
+#   • чистит session cache (чтобы не тащился tool_use_id с прошлой модели)
+#   • НЕ трогает auth-profiles — это отдельный слой, чинится через R3 меню
+ensure_model_consistency() {
+  local expected_model="${1:-opencode/minimax-m2.5-free}"
+
+  set +e
+
+  local current_default
+  current_default=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
+
+  # Если default вообще не задан — проставляем
+  if [[ -z "$current_default" ]]; then
+    openclaw config set agents.defaults.model.primary "$expected_model" &>/dev/null
+    current_default="$expected_model"
+    echo -e "   ${GREEN}✓${NC} Модель по умолчанию проставлена: ${expected_model}"
+  fi
+
+  # Собираем список агентов — если CLI отдаёт
+  local agents_raw
+  agents_raw=$(openclaw config get agents.list 2>/dev/null)
+  local agent_count
+  agent_count=$(echo "$agents_raw" | grep -c '"id"' 2>/dev/null || echo 0)
+  # grep -c может вернуть пусто при pipefail, приводим к числу
+  [[ "$agent_count" =~ ^[0-9]+$ ]] || agent_count=0
+
+  local mismatched=0
+  if [[ "$agent_count" -gt 0 ]]; then
+    for i in $(seq 0 $((agent_count - 1))); do
+      local agent_model
+      agent_model=$(openclaw config get "agents.list[${i}].model" 2>/dev/null | tr -d '\n" ')
+      if [[ -n "$agent_model" && "$agent_model" != "$current_default" ]]; then
+        # Расхождение — переписываем
+        openclaw config set "agents.list[${i}].model" "\"${current_default}\"" --strict-json &>/dev/null
+        mismatched=$((mismatched + 1))
+      fi
+    done
+  fi
+
+  if [[ "$mismatched" -gt 0 ]]; then
+    echo -e "   ${GREEN}✓${NC} У ${mismatched} агент(ов) была другая модель — все приведены к ${current_default}"
+    # Чистим сессии — иначе tool_use_id от старой модели будет конфликтовать
+    openclaw sessions cleanup --all-agents &>/dev/null || true
+    echo -e "   ${GREEN}✓${NC} Очищены сессии (чтобы не было конфликта с tool_use_id от старой модели)"
+  fi
+
+  set -e
+  return 0
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -1605,20 +1923,33 @@ else
     fi
   else
     explain "Устанавливаем OpenClaw..." \
-      "Это займёт 30–60 секунд. npm скачает все необходимые пакеты."
+      "Это займёт 30–60 секунд при хорошей сети, иногда до 2-3 минут." \
+      "Буду периодически печатать 'я жив' — чтобы вы видели, что не зависло."
 
     echo ""
-    if install_openclaw_npm; then
+    set +e
+    install_openclaw_npm
+    install_rc=$?
+    set -e
+
+    if [[ $install_rc -eq 0 ]]; then
       echo ""
       OC_VER=$(openclaw --version 2>&1 | head -1)
       ok "OpenClaw ${OC_VER} — установлен!"
+    elif [[ $install_rc -eq 2 ]]; then
+      # Permission (EACCES) — команды уже напечатаны в diagnose_npm_eacces
+      echo ""
+      warn "Установка не прошла из-за прав доступа npm."
+      ru "Выше — конкретные команды под ваш случай. Выполните их и запустите скрипт снова."
+      exit 1
     else
       echo ""
       warn "Не удалось установить OpenClaw — npm registry не отвечает (ETIMEDOUT)."
       ru "Это проблема сети, не скрипта. Что делать:"
       ru "  1. Проверьте интернет, VPN/прокси"
-      ru "  2. Подождите 1-2 минуты и запустите скрипт ещё раз"
-      ru "  3. Или вручную позже: npm install -g openclaw@latest"
+      ru "  2. Смените DNS на 1.1.1.1 или 8.8.8.8"
+      ru "  3. Подождите 1-2 минуты и запустите скрипт ещё раз"
+      ru "  4. Или вручную позже: npm install -g openclaw@latest"
       exit 1
     fi
   fi
@@ -1865,6 +2196,10 @@ AUTHEOF
 
     # Полная проверка: mode + валидация + deep status + auto-recovery
     ensure_gateway_healthy "fresh install" || true
+
+    # Согласованность provider/model у defaults + всех агентов
+    # (ловит кейсы вроде Елены: «выбрал MiniMax, но Model is disabled»)
+    ensure_model_consistency "$MODEL" || true
 
     ok "OpenClaw настроен без всяких визардов!"
   fi
@@ -2218,6 +2553,12 @@ step_header "R6" "FINAL CHECK"
 explain "Финальная проверка — убедимся, что всё работает..."
 echo ""
 
+# Pre-flight: ловим рассинхронизацию model у default vs agents.list[*]
+# до того как пользователь напишет боту и увидит «Model is disabled».
+if [[ "$DRY_RUN" != true ]]; then
+  ensure_model_consistency "opencode/minimax-m2.5-free" || true
+fi
+
 if [[ "$DRY_RUN" == true ]]; then
   show_cmd "openclaw status --all"
   echo ""
@@ -2546,7 +2887,29 @@ else
   echo -e "      ${GREEN}openclaw gateway restart${NC}"
   echo ""
 
-  echo -e "   ${BOLD}${WHITE}10. Хочу переустановить с нуля / не помню какой ключ вводил${NC}"
+  echo -e "   ${BOLD}${WHITE}10. 'Model is disabled' / 'Invalid API key' (кейс Елены, Саввы)${NC}"
+  echo -e "   ${DIM}   Причина: на /status всё выглядит правильно, но при реальном запросе${NC}"
+  echo -e "   ${DIM}   бот отвечает 401/disabled. Обычно это одно из трёх:${NC}"
+  echo -e "   ${DIM}     • agents.defaults одна модель, а agents.list[i] другая${NC}"
+  echo -e "   ${DIM}     • старый auth-profile opencode:default с кривым ключом${NC}"
+  echo -e "   ${DIM}     • кэш сессий тащит tool_use_id от прошлой модели${NC}"
+  echo ""
+  echo -e "   ${DIM}   Лесенка восстановления — делать по порядку, проверяя /status после каждого шага:${NC}"
+  echo -e "      ${GREEN}# 1. Привести default и всех агентов к одной модели${NC}"
+  echo -e "      ${GREEN}openclaw config set agents.defaults.model.primary opencode/minimax-m2.5-free${NC}"
+  echo -e "      ${GREEN}openclaw config get agents.list    ${DIM}# посмотреть сколько агентов${NC}"
+  echo -e "      ${GREEN}# для каждого индекса [0], [1], ...${NC}"
+  echo -e "      ${GREEN}openclaw config set 'agents.list[0].model' '\"opencode/minimax-m2.5-free\"' --strict-json${NC}"
+  echo -e "      ${GREEN}# 2. Почистить сессии — иначе будет конфликт tool_use_id${NC}"
+  echo -e "      ${GREEN}openclaw sessions cleanup --all-agents${NC}"
+  echo -e "      ${GREEN}# 3. Перезапустить gateway${NC}"
+  echo -e "      ${GREEN}openclaw gateway restart${NC}"
+  echo -e "      ${GREEN}# 4. Если всё ещё 401 — перезаписать ключ через мягкий мастер${NC}"
+  echo -e "      ${GREEN}openclaw configure --section model${NC}"
+  echo -e "      ${DIM}# provider: OpenCode Zen | model: MiniMax M2.5 Free | вставить ключ заново${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}11. Хочу переустановить с нуля / не помню какой ключ вводил${NC}"
   echo -e "   ${DIM}   Удаление openclaw.json — мало. Креды живут отдельно.${NC}"
   echo -e "   ${DIM}   Полный сброс:${NC}"
   echo -e "      ${GREEN}openclaw reset --scope config+creds+sessions --yes --non-interactive${NC}"
@@ -2554,6 +2917,22 @@ else
   echo -e "      ${GREEN}openclaw configure --section model${NC}"
   echo -e "   ${DIM}   Или перезапустите установщик — он покажет меню:${NC}"
   echo -e "      ${DIM}  1) оставить / 2) сменить модель / 3) новый ключ / 4) полный сброс${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}12. npm EACCES при установке/обновлении OpenClaw${NC}"
+  echo -e "   ${DIM}   Это два РАЗНЫХ случая — команды разные. Смотрите на текст ошибки:${NC}"
+  echo -e "   ${DIM}   • Если в ошибке 'node_modules' / '/usr/local' → системный Node.js:${NC}"
+  echo -e "      ${GREEN}sudo npm install -g openclaw@latest${NC}"
+  echo -e "   ${DIM}   • Если в ошибке '.npm' / 'cache' → кэш под root'ом:${NC}"
+  echo -e "      ${GREEN}sudo chown -R \$(id -u):\$(id -g) ~/.npm${NC}"
+  echo -e "   ${DIM}   Потом повторить: ${GREEN}npm install -g openclaw@latest${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}13. При установке Homebrew пароль не вводится / ничего не происходит${NC}"
+  echo -e "   ${DIM}   Это НЕ баг — sudo по дизайну не отображает пароль при вводе.${NC}"
+  echo -e "   ${DIM}   Печатайте пароль от Mac (не Apple ID) вслепую и жмите Enter.${NC}"
+  echo -e "   ${DIM}   Если 'user is not in the sudoers file' — вы не admin на Mac.${NC}"
+  echo -e "   ${DIM}   Решение: зайдите в macOS на admin-аккаунт и запустите скрипт заново.${NC}"
   echo ""
 
   divider
