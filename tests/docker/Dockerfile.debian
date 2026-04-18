@@ -1,0 +1,44 @@
+# Docker smoke-тест для установщика на чистом Debian/Ubuntu-like образе.
+# Базовый образ — node:22-bookworm (то, что реально есть у большинства
+# пользователей после install_node_via_nvm).
+#
+# Запускается через tests/docker/run-smoke.sh или из CI.
+#
+# Что мы проверяем:
+#   1) bash -n на скриптах (синтаксис в клоне)
+#   2) --version печатает версию
+#   3) --help не падает
+#   4) --diagnose-only не падает (OpenClaw не установлен — должно быть fail-но-не-crash)
+#   5) preflight network check не падает (хоть один endpoint должен быть доступен)
+#   6) helpers extract awk-pattern работает (смок-скрипт из CI)
+#
+# Мы НЕ запускаем полный R1-R6 в Docker потому что:
+#   • нужны реальные API-ключи OpenCode и Telegram
+#   • openclaw CLI может хотеть /dev/tty для каких-то промптов
+#   • мы хотим быстрый smoke (<30 сек), а не интеграционный тест
+#
+# Full integration test — отдельная задача, когда появятся mocks для
+# opencode.ai и Telegram API.
+
+FROM node:22-bookworm
+
+# Нам нужны: curl (для preflight), git (для версии-hash), zip (для
+# collect_debug_bundle), ca-certificates (для HTTPS). bash уже есть.
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+      curl git zip ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Копируем скрипты. Монтирование через volume возможно, но копия
+# гарантирует, что мы тестируем именно коммит, а не локальные правки.
+WORKDIR /opt/openclaw-factory
+COPY scripts /opt/openclaw-factory/scripts
+COPY .github /opt/openclaw-factory/.github
+
+# Делаем скрипты исполняемыми (на случай если chmod не сохранился в git)
+RUN chmod +x /opt/openclaw-factory/scripts/*.sh \
+  && chmod +x /opt/openclaw-factory/.github/workflows/smoke-test.sh
+
+# Default entrypoint — запустить smoke-проверки. Переопределяется через
+# `docker run ... bash` если нужна интерактивная отладка.
+ENTRYPOINT ["bash", "-c"]
+CMD ["bash /opt/openclaw-factory/tests/docker/run-checks.sh"]

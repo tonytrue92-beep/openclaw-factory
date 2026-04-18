@@ -1,0 +1,23 @@
+# Smoke-тест на минимальном Alpine — проверяет, что скрипт работает
+# без GNU-утилит (у BSD-сёстёр sed/grep другой синтаксис).
+#
+# На Alpine мы ожидаем, что *некоторые* проверки могут вести себя
+# иначе (например, `date -u` или `shasum` могут отсутствовать), поэтому
+# это мягкий smoke: важно, что скрипт не падает с синтаксической ошибкой
+# и что preflight/--version работают.
+
+FROM node:22-alpine
+
+# Alpine: bash не стандартный shell, нужно явно поставить.
+# curl, git, zip — как в Debian.
+RUN apk add --no-cache bash curl git zip coreutils
+
+WORKDIR /opt/openclaw-factory
+COPY scripts /opt/openclaw-factory/scripts
+COPY .github /opt/openclaw-factory/.github
+
+RUN chmod +x /opt/openclaw-factory/scripts/*.sh \
+  && chmod +x /opt/openclaw-factory/.github/workflows/smoke-test.sh
+
+ENTRYPOINT ["bash", "-c"]
+CMD ["bash /opt/openclaw-factory/tests/docker/run-checks.sh"]

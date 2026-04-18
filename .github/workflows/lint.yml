@@ -11,11 +11,15 @@ on:
     paths:
       - 'scripts/**'
       - '.github/workflows/**'
+      - 'tests/**'
+      - 'SHA256SUMS'
   pull_request:
     branches: [main]
     paths:
       - 'scripts/**'
       - '.github/workflows/**'
+      - 'tests/**'
+      - 'SHA256SUMS'
 
 permissions:
   contents: read
@@ -69,3 +73,56 @@ jobs:
       - uses: actions/checkout@v4
       - name: Extract and run helpers
         run: bash .github/workflows/smoke-test.sh
+
+  security-audit:
+    name: Security audit (no secret leaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static check for secret-leak patterns
+        run: bash .github/workflows/security-audit.sh
+
+  checksums:
+    name: SHA256SUMS freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify SHA256SUMS is up to date
+        run: |
+          set -euo pipefail
+          if [[ ! -f SHA256SUMS ]]; then
+            echo "SHA256SUMS file is missing. Run: bash scripts/update-checksums.sh"
+            exit 1
+          fi
+          # Пересчитываем хэши во временный файл и сравниваем только хэш-строки
+          # (комментарии с датой/коммитом игнорируем — они каждый раз разные).
+          tmp=$(mktemp)
+          for f in scripts/*.sh; do
+            sha256sum "$f" >> "$tmp"
+          done
+          committed=$(grep -vE '^(#|$)' SHA256SUMS | sort)
+          current=$(sort "$tmp")
+          if [[ "$committed" != "$current" ]]; then
+            echo "SHA256SUMS is out of date. Run: bash scripts/update-checksums.sh"
+            echo ""
+            echo "--- committed ---"
+            echo "$committed"
+            echo "--- current ---"
+            echo "$current"
+            exit 1
+          fi
+          echo "SHA256SUMS is up to date"
+
+  docker-smoke:
+    name: Docker smoke (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [debian, alpine]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t openclaw-factory-test:${{ matrix.variant }} -f tests/docker/Dockerfile.${{ matrix.variant }} .
+      - name: Run smoke checks
+        run: docker run --rm openclaw-factory-test:${{ matrix.variant }}
