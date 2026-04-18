@@ -33,10 +33,13 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
 WORKDIR /opt/openclaw-factory
 COPY scripts /opt/openclaw-factory/scripts
 COPY .github /opt/openclaw-factory/.github
+COPY tests /opt/openclaw-factory/tests
 
 # Делаем скрипты исполняемыми (на случай если chmod не сохранился в git)
 RUN chmod +x /opt/openclaw-factory/scripts/*.sh \
-  && chmod +x /opt/openclaw-factory/.github/workflows/smoke-test.sh
+  && chmod +x /opt/openclaw-factory/.github/workflows/smoke-test.sh \
+  && chmod +x /opt/openclaw-factory/.github/workflows/security-audit.sh \
+  && chmod +x /opt/openclaw-factory/tests/docker/*.sh
 
 # Default entrypoint — запустить smoke-проверки. Переопределяется через
 # `docker run ... bash` если нужна интерактивная отладка.

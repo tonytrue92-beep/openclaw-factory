@@ -15,9 +15,12 @@ RUN apk add --no-cache bash curl git zip coreutils
 WORKDIR /opt/openclaw-factory
 COPY scripts /opt/openclaw-factory/scripts
 COPY .github /opt/openclaw-factory/.github
+COPY tests /opt/openclaw-factory/tests
 
 RUN chmod +x /opt/openclaw-factory/scripts/*.sh \
-  && chmod +x /opt/openclaw-factory/.github/workflows/smoke-test.sh
+  && chmod +x /opt/openclaw-factory/.github/workflows/smoke-test.sh \
+  && chmod +x /opt/openclaw-factory/.github/workflows/security-audit.sh \
+  && chmod +x /opt/openclaw-factory/tests/docker/*.sh
 
 ENTRYPOINT ["bash", "-c"]
 CMD ["bash /opt/openclaw-factory/tests/docker/run-checks.sh"]
