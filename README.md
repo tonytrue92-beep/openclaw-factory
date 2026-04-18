@@ -23,6 +23,32 @@ git clone https://github.com/tonytrue92-beep/openclaw-factory.git
 bash openclaw-factory/scripts/demo-install.sh
 ```
 
+### Проверить целостность перед запуском (для параноиков)
+
+Если вы хотите убедиться, что скачанный скрипт не подменён:
+
+```bash
+# 1) Скачать скрипт в файл (не запускать)
+curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/demo-install.sh -o demo-install.sh
+
+# 2) Посчитать его хэш
+shasum -a 256 demo-install.sh       # macOS
+sha256sum demo-install.sh           # Linux
+
+# 3) Сравнить со значением в SHA256SUMS в репе:
+# https://github.com/tonytrue92-beep/openclaw-factory/blob/main/SHA256SUMS
+
+# Хэши совпадают — запускайте:
+bash demo-install.sh
+```
+
+Хэши актуальны для последнего коммита в `main` (в файле указана дата + commit).
+
+### Что нового — [CHANGELOG.md](./CHANGELOG.md)
+
+Смотрите этот файл, чтобы узнать, что поменялось в последней версии —
+какие баги починены, какие фичи добавлены, какие breaking changes.
+
 ---
 
 ## 📖 Что внутри
