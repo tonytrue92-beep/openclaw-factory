@@ -36,13 +36,17 @@ jobs:
           # --exclude: отключаем проверки, которые у нас осознанные:
           #   SC1090/1091 — dynamic source paths (используем в смоке);
           #   SC2155 — declare-and-assign (косметика);
-          #   SC2086 — quoting (иногда оправдано).
+          #   SC2086 — quoting (иногда оправдано);
+          #   SC2034 — unused variable (резервные константы в палитре/флаги;
+          #            реальные баги в этом классе ловит скорее bash -n или
+          #            smoke-тест, а shellcheck тут даёт много шума).
           shellcheck \
             --severity=warning \
-            --exclude=SC1090,SC1091,SC2155,SC2086 \
+            --exclude=SC1090,SC1091,SC2155,SC2086,SC2034 \
             scripts/demo-install.sh \
             scripts/openclaw-switch-model.sh \
-            scripts/install-claude-proxy.sh
+            scripts/install-claude-proxy.sh \
+            scripts/openclaw-factory-reauth.sh
 
   syntax:
     name: bash -n (syntax)
