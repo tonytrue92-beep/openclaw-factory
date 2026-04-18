@@ -7,8 +7,67 @@ set -euo pipefail
 #  Не трогает основную систему (~/.openclaw)
 # ═══════════════════════════════════════════════════════════════
 
+# ─── Версия установщика ─────────────────────────────────────────
+# Обновляется при каждом значимом коммите. INSTALLER_COMMIT подставляется
+# через sed в CI (GitHub Actions); если скрипт запущен из рабочей копии
+# без CI — плейсхолдер остаётся «dev».
+#
+# Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
+# на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
+# последние фиксы или он закэшировал старый curl.
+INSTALLER_VERSION="2026.04.18"
+INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
+
+# Если скрипт запущен из локального git-checkout (а не из curl|bash),
+# пробуем заменить placeholder на реальный hash короткого коммита.
+# Клиенты качают через curl — у них git нет, остаётся плейсхолдер, и это
+# нормально (в URL всё равно видно `main`, а версия в дате).
+if [[ "$INSTALLER_COMMIT" == "__COMMIT_PLACEHOLDER__" ]]; then
+  _script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null) || _script_dir=""
+  if [[ -n "$_script_dir" && -d "${_script_dir}/../.git" ]] && command -v git &>/dev/null; then
+    _commit=$(git -C "${_script_dir}/.." rev-parse --short HEAD 2>/dev/null) || _commit=""
+    [[ -n "$_commit" ]] && INSTALLER_COMMIT="${_commit}-dev"
+  fi
+  unset _script_dir _commit
+fi
+
+# Быстрая обработка «просмотровых» флагов — до любой работы с TTY,
+# чтобы `--version` / `--help` работали и в non-interactive окружении
+# (например, в CI или при пайпе в less).
+for arg in "$@"; do
+  case "$arg" in
+    --version|-V)
+      echo "OpenClaw Factory Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})"
+      exit 0
+      ;;
+    --help|-h)
+      echo "OpenClaw Factory Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})"
+      echo ""
+      echo "Usage: bash demo-install.sh [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  --install         Skip demo, go straight to real installation"
+      echo "  --dry-run         Simulate the full installation (nothing is installed)"
+      echo "  --collect-debug   Collect debug bundle for support (non-interactive)"
+      echo "  --version         Print installer version and exit"
+      echo "  --help            Show this help"
+      echo ""
+      echo "Without flags: starts with interactive demo, then offers real install"
+      exit 0
+      ;;
+  esac
+done
+
+# Проверяем заранее: если запрошен `--collect-debug`, то TTY нам не нужен
+# (функция только пишет файлы, ничего не спрашивает). Это даст возможность
+# ученикам собирать bundle даже в non-interactive окружении.
+NEEDS_TTY=true
+for arg in "$@"; do
+  [[ "$arg" == "--collect-debug" ]] && NEEDS_TTY=false
+done
+
 # Поддержка curl | bash — читаем ввод с терминала, а не из pipe
-if [[ ! -t 0 ]]; then
+if [[ "$NEEDS_TTY" == true && ! -t 0 ]]; then
   if [[ -e /dev/tty ]]; then
     exec < /dev/tty
   else
@@ -23,23 +82,15 @@ DEMO_DIR="$HOME/.openclaw-${PROFILE}"
 SPEED=${SPEED:-0.02}
 SKIP_DEMO=false
 DRY_RUN=false
+COLLECT_DEBUG_ONLY=false  # флаг для --collect-debug; сам вызов ниже, после определения функций
 
-# Флаги запуска
+# Остальные флаги (меняющие состояние) — после TTY-инициализации
 for arg in "$@"; do
   case "$arg" in
     --install|--real|--skip-demo) SKIP_DEMO=true ;;
     --dry-run|--simulate) DRY_RUN=true; SKIP_DEMO=true ;;
-    --help|-h)
-      echo "Usage: bash demo-install.sh [OPTIONS]"
-      echo ""
-      echo "Options:"
-      echo "  --install     Skip demo, go straight to real installation"
-      echo "  --dry-run     Simulate the full installation (nothing is installed)"
-      echo "  --help        Show this help"
-      echo ""
-      echo "Without flags: starts with interactive demo, then offers real install"
-      exit 0
-      ;;
+    --version|-V|--help|-h) : ;;  # уже обработано выше
+    --collect-debug) COLLECT_DEBUG_ONLY=true ;;
   esac
 done
 
@@ -451,6 +502,326 @@ stop_heartbeat() {
   wait "$hb_pid" 2>/dev/null || true
 }
 
+# ─── Маскировка секретов в тексте ───────────────────────────────
+#
+# Когда мы собираем debug-bundle для саппорта, ни в одном файле не должно
+# быть валидных API-ключей, Telegram-токенов или паролей. Эта функция
+# принимает файл и заменяет в нём подозрительные паттерны на «[REDACTED]»:
+#
+#   • opencode.ai API keys: sk-xxxxxxxx... (40+ символов)
+#   • Telegram bot tokens: 10+цифр:35+символов
+#   • Bearer tokens: Bearer xxxxx...
+#   • password-like строки в JSON: "key":"...", "token":"...", "password":"..."
+#
+# Работает in-place (через sed). Если файл бинарный — ничего не ломает,
+# sed просто пройдёт мимо (проверка через `grep -Iq` — текстовый ли).
+redact_secrets() {
+  local file="$1"
+  [[ ! -f "$file" ]] && return 0
+  # Пропускаем бинарные файлы
+  grep -Iq . "$file" 2>/dev/null || return 0
+
+  # sed -E на macOS (BSD) и Linux (GNU) различается в -i — явно пишем в tmp
+  local tmp
+  tmp=$(mktemp -t openclaw-redact.XXXXXX)
+
+  sed -E \
+    -e 's/sk-[A-Za-z0-9_-]{20,}/sk-[REDACTED]/g' \
+    -e 's/[0-9]{8,12}:[A-Za-z0-9_-]{30,}/[TG_TOKEN_REDACTED]/g' \
+    -e 's/([Bb]earer )[A-Za-z0-9._-]+/\1[REDACTED]/g' \
+    -e 's/("(key|token|password|secret|apiKey|api_key)"[[:space:]]*:[[:space:]]*")[^"]*(")/\1[REDACTED]\3/g' \
+    "$file" > "$tmp"
+
+  mv "$tmp" "$file"
+}
+
+# ─── Сборка debug-bundle при ошибке или по запросу ──────────────
+#
+# Когда установщик падает (или ученик сам запускает `--collect-debug`),
+# собираем в один zip-файл:
+#   • версию установщика и commit
+#   • uname -a, node/npm/brew --version
+#   • ~/.openclaw/openclaw.json (без секретов)
+#   • последние 200 строк ~/.openclaw/logs/*.log
+#   • вывод `openclaw status --all`, `openclaw gateway status`, `openclaw doctor`
+#   • последние 50 строк истории установщика (если включён лог)
+#
+# Результат: ~/openclaw-debug-YYYYMMDD-HHMMSS.zip
+# Ученик пересылает файл в саппорт → там видно всё за 30 секунд.
+#
+# Безопасность: перед зипом каждый .json/.log пропускается через
+# redact_secrets → в бандле не должно остаться ни одного валидного ключа.
+collect_debug_bundle() {
+  local reason="${1:-manual}"
+  local ts
+  ts=$(date +%Y%m%d-%H%M%S)
+  local bundle_dir
+  bundle_dir=$(mktemp -d -t openclaw-debug.XXXXXX)
+  local bundle_name="openclaw-debug-${ts}"
+  local bundle_path="${bundle_dir}/${bundle_name}"
+  mkdir -p "$bundle_path"
+
+  # ─── Manifest: что внутри, когда собрано, почему ───
+  cat > "${bundle_path}/MANIFEST.txt" <<MANIFEST
+OpenClaw Factory Debug Bundle
+=============================
+Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+Reason: ${reason}
+Installer: v${INSTALLER_VERSION} (${INSTALLER_COMMIT})
+
+System:
+  $(uname -a 2>&1 || echo 'uname failed')
+
+Versions:
+  node: $(command -v node >/dev/null && node -v 2>&1 || echo 'not installed')
+  npm:  $(command -v npm >/dev/null && npm -v 2>&1 || echo 'not installed')
+  brew: $(command -v brew >/dev/null && brew --version 2>&1 | head -1 || echo 'not installed')
+  openclaw: $(command -v openclaw >/dev/null && openclaw --version 2>&1 | head -1 || echo 'not installed')
+
+Contents:
+  - MANIFEST.txt         — this file
+  - system-info.txt      — extended system diagnostics
+  - openclaw-config.json — ~/.openclaw/openclaw.json (REDACTED — secrets removed)
+  - openclaw-status.txt  — openclaw status --all
+  - openclaw-gateway.txt — openclaw gateway status --deep
+  - openclaw-doctor.txt  — openclaw doctor output
+  - gateway.log          — last 200 lines of ~/.openclaw/logs/gateway.log (REDACTED)
+
+IMPORTANT: все потенциальные секреты (API-ключи, токены) автоматически заменены
+на [REDACTED]. Но всё же проверьте файлы перед отправкой в саппорт.
+MANIFEST
+
+  # ─── Система ───
+  {
+    echo "=== uname -a ==="
+    uname -a 2>&1 || true
+    echo ""
+    echo "=== sw_vers (macOS) ==="
+    sw_vers 2>&1 || true
+    echo ""
+    echo "=== Architecture ==="
+    arch 2>&1 || uname -m
+    echo ""
+    echo "=== Disk space (\$HOME) ==="
+    df -h "$HOME" 2>&1 || true
+    echo ""
+    echo "=== PATH ==="
+    echo "$PATH"
+    echo ""
+    echo "=== Is admin? ==="
+    if id -Gn "$(whoami)" 2>/dev/null | grep -qw admin; then
+      echo "yes (macOS admin group)"
+    else
+      echo "no (not in admin group)"
+    fi
+    echo ""
+    echo "=== xcode-select -p ==="
+    xcode-select -p 2>&1 || echo 'xcode-select не найден'
+  } > "${bundle_path}/system-info.txt" 2>&1
+
+  # ─── OpenClaw конфиг (обязательно через redact_secrets) ───
+  if [[ -f "$HOME/.openclaw/openclaw.json" ]]; then
+    cp "$HOME/.openclaw/openclaw.json" "${bundle_path}/openclaw-config.json"
+    redact_secrets "${bundle_path}/openclaw-config.json"
+  else
+    echo "(no ~/.openclaw/openclaw.json)" > "${bundle_path}/openclaw-config.json"
+  fi
+
+  # ─── OpenClaw команды ───
+  if command -v openclaw &>/dev/null; then
+    openclaw status --all > "${bundle_path}/openclaw-status.txt" 2>&1 || true
+    openclaw gateway status --deep > "${bundle_path}/openclaw-gateway.txt" 2>&1 || true
+    openclaw doctor > "${bundle_path}/openclaw-doctor.txt" 2>&1 || true
+  else
+    echo "openclaw CLI not installed" > "${bundle_path}/openclaw-status.txt"
+  fi
+
+  # ─── Последние 200 строк логов gateway ───
+  if [[ -d "$HOME/.openclaw/logs" ]]; then
+    local latest_log
+    latest_log=$(ls -t "$HOME/.openclaw/logs/"*.log 2>/dev/null | head -1)
+    if [[ -n "$latest_log" && -f "$latest_log" ]]; then
+      tail -200 "$latest_log" > "${bundle_path}/gateway.log"
+      redact_secrets "${bundle_path}/gateway.log"
+    fi
+  fi
+
+  # ─── Маскируем секреты во ВСЕХ текстовых файлах бандла ───
+  # (страховка на случай если что-то просочилось через openclaw status и пр.)
+  for f in "${bundle_path}"/*.txt "${bundle_path}"/*.json "${bundle_path}"/*.log; do
+    [[ -f "$f" ]] && redact_secrets "$f"
+  done
+
+  # ─── Архивация ───
+  local archive_path="$HOME/${bundle_name}.zip"
+  if command -v zip &>/dev/null; then
+    (cd "$bundle_dir" && zip -qr "$archive_path" "$bundle_name" 2>/dev/null) || {
+      # Fallback на tar.gz если zip недоступен
+      archive_path="$HOME/${bundle_name}.tar.gz"
+      tar -czf "$archive_path" -C "$bundle_dir" "$bundle_name" 2>/dev/null || true
+    }
+  else
+    archive_path="$HOME/${bundle_name}.tar.gz"
+    tar -czf "$archive_path" -C "$bundle_dir" "$bundle_name" 2>/dev/null || true
+  fi
+
+  # Убираем tmp директорию
+  rm -rf "$bundle_dir" 2>/dev/null
+
+  if [[ -f "$archive_path" ]]; then
+    echo ""
+    echo -e "   ${BOLD}${CYAN}📦 Собран debug-bundle для саппорта:${NC}"
+    echo -e "   ${GREEN}${archive_path}${NC}"
+    echo -e "   ${DIM}Размер: $(du -h "$archive_path" | cut -f1)${NC}"
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Что делать дальше:${NC}"
+    echo -e "   ${CYAN}1.${NC} Пришлите этот файл в поддержку курса"
+    echo -e "   ${CYAN}2.${NC} Секреты уже замаскированы, но если волнуетесь —"
+    echo -e "      ${DIM}распакуйте и просмотрите перед отправкой${NC}"
+    echo ""
+  fi
+}
+
+# ─── Error handler — вызывается при любом exit !=0 в установщике ─
+#
+# Когда скрипт падает, 99% пользователей делают скриншот ошибки и пишут
+# «не работает». Саппорт гадает. С этим trap'ом при падении автоматически
+# собирается debug-bundle — и достаточно переслать один файл.
+#
+# NB: не вызываем при нормальном exit 0 — только при ошибке.
+# NB: не собираем в DRY_RUN режиме — там всё симуляция.
+on_installer_error() {
+  local exit_code=$?
+  local line_no="${1:-?}"
+
+  # Не собираем в dry-run и не при ручном прерывании (Ctrl+C = 130)
+  if [[ "${DRY_RUN:-false}" == true ]]; then return $exit_code; fi
+  if [[ $exit_code -eq 130 ]]; then return $exit_code; fi
+  # Не вызываем для просмотровых флагов (они уже вышли с 0)
+
+  echo ""
+  echo -e "   ${BOLD}${RED}━━━ установщик остановился (exit=${exit_code}, line=${line_no}) ━━━${NC}"
+  echo ""
+  echo -e "   ${DIM}Собираю debug-bundle для саппорта...${NC}"
+  collect_debug_bundle "error exit=${exit_code} at line ${line_no}" || true
+  return $exit_code
+}
+
+# Устанавливаем trap только в реальной установке (не в демо и не в dry-run).
+# Активация происходит ниже, после обработки флагов.
+
+# ─── Preflight network check ───────────────────────────────────
+#
+# Классическая жалоба: «установка зависла на R2 (npm install)». Часто
+# причина — сеть (корпоративный прокси режет registry.npmjs.org, VPN
+# отключился, DNS не резолвит). Сейчас установщик узнаёт об этом только
+# через 60-120 секунд таймаута npm, а то и несколько ретраев.
+#
+# Эта функция за 5-10 секунд проверяет, что все критичные endpoints
+# достижимы, и ЕСЛИ нет — сразу даёт пользователю конкретный диагноз:
+# какой именно сервис недоступен и какие варианты действий.
+#
+# Проверяем только базовую HTTP-доступность, не авторизацию — так
+# мы не ловим ложных срабатываний из-за отсутствующих ключей.
+#
+# Возвращает:
+#   0 — все критичные endpoints доступны
+#   1 — хотя бы один критичный недоступен (пользователю показан диагноз)
+preflight_network_check() {
+  echo ""
+  echo -e "   ${DIM}Проверяю доступность сети (5 сек)...${NC}"
+
+  # endpoint_name|url|criticality (critical|optional)
+  local endpoints=(
+    "npm registry|https://registry.npmjs.org/|critical"
+    "GitHub raw|https://raw.githubusercontent.com/|critical"
+    "opencode.ai|https://opencode.ai/|critical"
+    "Telegram API|https://api.telegram.org/|optional"
+  )
+
+  local failed_critical=()
+  local failed_optional=()
+  local all_ok=true
+
+  for entry in "${endpoints[@]}"; do
+    local name="${entry%%|*}"
+    local rest="${entry#*|}"
+    local url="${rest%%|*}"
+    local level="${rest##*|}"
+
+    # curl -I: HEAD-запрос; --max-time 5: не ждём вечно; --silent: без прогресса;
+    # -o /dev/null -w '%{http_code}' — только HTTP-код.
+    local http_code
+    http_code=$(curl --max-time 5 -sI -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || echo "000")
+
+    # 2xx, 3xx, или даже 401/403 — значит сеть работает, просто нет авторизации
+    if [[ "$http_code" =~ ^(2|3|401|403|404) ]]; then
+      echo -e "   ${GREEN}✓${NC} ${name} (HTTP ${http_code})"
+    else
+      all_ok=false
+      if [[ "$level" == "critical" ]]; then
+        failed_critical+=("${name}|${url}")
+        echo -e "   ${RED}✗${NC} ${name} недоступен (HTTP ${http_code:-timeout})"
+      else
+        failed_optional+=("${name}|${url}")
+        echo -e "   ${YELLOW}○${NC} ${name} недоступен (необязательный)"
+      fi
+    fi
+  done
+
+  echo ""
+
+  if [[ "$all_ok" == true ]]; then
+    echo -e "   ${GREEN}Сеть OK — все критичные сервисы доступны.${NC}"
+    return 0
+  fi
+
+  if [[ ${#failed_critical[@]} -gt 0 ]]; then
+    warn "Критичные сервисы недоступны — установка не сможет продолжиться:"
+    echo ""
+    for entry in "${failed_critical[@]}"; do
+      local name="${entry%%|*}"
+      local url="${entry##*|}"
+      echo -e "   ${RED}✗${NC} ${BOLD}${name}${NC}: ${url}"
+    done
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Вероятные причины:${NC}"
+    echo -e "   ${CYAN}1.${NC} ${BOLD}Корпоративный прокси/firewall${NC} блокирует эти домены"
+    echo -e "      ${DIM}→ попробуйте мобильный интернет / домашнюю Wi-Fi${NC}"
+    echo -e "   ${CYAN}2.${NC} ${BOLD}VPN${NC} маршрутизирует трафик через нерабочую сеть"
+    echo -e "      ${DIM}→ отключите VPN или включите другой${NC}"
+    echo -e "   ${CYAN}3.${NC} ${BOLD}DNS${NC} не резолвит хост"
+    echo -e "      ${DIM}→ смените DNS на 1.1.1.1 или 8.8.8.8${NC}"
+    echo -e "   ${CYAN}4.${NC} ${BOLD}Региональная блокировка${NC} (редко, но бывает)"
+    echo -e "      ${DIM}→ VPN с другой страной${NC}"
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Проверить вручную:${NC}"
+    for entry in "${failed_critical[@]}"; do
+      local url="${entry##*|}"
+      echo -e "      ${GREEN}curl -I ${url}${NC}"
+    done
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Продолжить несмотря на это? [y/N]:${NC}"
+    read -r ignore_net
+    if [[ "$ignore_net" != "y" && "$ignore_net" != "Y" ]]; then
+      echo -e "   ${DIM}Остановлено. Почините сеть и запустите скрипт снова.${NC}"
+      exit 1
+    fi
+    warn "Продолжаем несмотря на проблемы с сетью — может зависнуть."
+  fi
+
+  if [[ ${#failed_optional[@]} -gt 0 ]]; then
+    warn "Необязательные сервисы недоступны (не блокер):"
+    for entry in "${failed_optional[@]}"; do
+      local name="${entry%%|*}"
+      echo -e "   ${YELLOW}○${NC} ${name}"
+    done
+    ru "Пока не критично — пропустим, если понадобится, вернёмся на этот шаг."
+  fi
+
+  return 0
+}
+
 # ─── Раздельная диагностика npm permissions ─────────────────────
 #
 # У новичков `EACCES` в npm — это ДВА разных случая, которые
@@ -753,6 +1124,19 @@ ensure_model_consistency() {
 }
 
 # ═══════════════════════════════════════════════════════════════
+#  --collect-debug: ручной сбор bundle, ничего не устанавливаем
+# ═══════════════════════════════════════════════════════════════
+# Вызов идёт именно здесь: функция `collect_debug_bundle` уже определена
+# выше вместе с остальными helpers, а основное меню установки — ниже.
+if [[ "$COLLECT_DEBUG_ONLY" == true ]]; then
+  echo ""
+  echo -e "${BOLD}${CYAN}📦 Сбор debug-bundle для саппорта${NC}"
+  echo -e "${DIM}   Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})${NC}"
+  collect_debug_bundle "manual (user ran --collect-debug)"
+  exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════
 #  НАЧАЛЬНОЕ МЕНЮ — 3 варианта сразу на старте
 # ═══════════════════════════════════════════════════════════════
 
@@ -771,6 +1155,7 @@ LOGO
   echo -e "${NC}"
   echo -e "${BOLD}   AI-шлюз для мессенджеров (Telegram, WhatsApp, Discord, Slack…)${NC}"
   echo -e "${DIM}   https://openclaw.ai${NC}"
+  echo -e "${DIM}   Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})${NC}"
   echo ""
   echo -e "${DIM}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo ""
@@ -841,6 +1226,7 @@ cat << 'LOGO'
 LOGO
 echo -e "${NC}"
 echo -e "${BOLD}   Installation Demo — Демонстрация установки${NC}"
+echo -e "${DIM}   Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})${NC}"
 echo -e "${DIM}   Isolated profile: ${PROFILE} (does not affect your system)${NC}"
 echo -e "${DIM}   Directory: ${DEMO_DIR}${NC}"
 echo ""
@@ -1806,6 +2192,28 @@ pause
 #  REAL STEP 1: Проверка зависимостей
 # ═══════════════════════════════════════════════════════════════
 
+# Баннер версии — чтобы в случае проблем саппорт сразу знал, какой
+# скрипт запущен у пользователя (вдруг закэшировал старый curl).
+echo ""
+echo -e "${DIM}   OpenClaw Factory Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})${NC}"
+echo -e "${DIM}   При обращении в поддержку — пришлите эти цифры, так быстрее${NC}"
+echo -e "${DIM}   Или одной командой: bash <(curl ...) --collect-debug${NC}"
+
+# Активируем trap для автоматического сбора debug-bundle при любом падении.
+# Только для реальной установки (не DRY_RUN), потому что в симуляции
+# нам нечего собирать.
+if [[ "$DRY_RUN" != true ]]; then
+  trap 'on_installer_error $LINENO' ERR
+fi
+
+# ─── Preflight: проверяем сеть ДО того, как начать ставить ───
+# (быстрый 5-секундный чек; если корпоративный прокси блокирует
+# npm registry, пользователь получит конкретный диагноз сразу,
+# а не через 2 минуты таймаута на R2)
+if [[ "$DRY_RUN" != true ]]; then
+  preflight_network_check || true
+fi
+
 step_header "R1" "SYSTEM CHECK"
 
 explain "Проверяем, что всё необходимое на месте..."
@@ -2199,7 +2607,16 @@ AUTHEOF
     fi
 
     # Устанавливаем gateway как service (автозапуск) — всё с || true,
-    # чтобы set -e не убил скрипт от лишней болтовни в stderr
+    # чтобы set -e не убил скрипт от лишней болтовни в stderr.
+    #
+    # ВНИМАНИЕ (ref. решение #14 в handoff): на macOS `openclaw gateway install`
+    # кладёт LaunchAgent в ~/Library/LaunchAgents без sudo — безопасно.
+    # На Linux, если OpenClaw выберет системный systemd-сервис, команда может
+    # попросить sudo-пароль. Текущий pipe `| tail -3 | while read` в таком
+    # случае заблокирует ввод пароля — пользователь зависнет как на Homebrew.
+    # Защита: `|| true` не даёт скрипту упасть, а основная ЦА — macOS.
+    # Если начнём массово поддерживать Linux с системным systemd — переписать
+    # без pipe, как сделано для install_homebrew.
     if ! openclaw gateway status 2>&1 | grep -q "running"; then
       echo -e "   ${DIM}Устанавливаю gateway как системный сервис...${NC}"
       { openclaw gateway install 2>&1 || true; } | tail -3 | while IFS= read -r line; do
@@ -2515,21 +2932,33 @@ WSEOF
   ok "Ассистент '${AGENT_ID}' создан и готов к работе!"
 fi
 
-# ─── Ставим helper-команду openclaw-switch-model ────────────────────────
-explain "Устанавливаем helper-команду для быстрой смены модели..."
+# ─── Ставим helper-команды из репы openclaw-factory ────────────────────
+explain "Устанавливаем helper-команды (смена модели + перезапись auth)..."
 
 HELPER_DIR="$HOME/.openclaw/bin"
 HELPER_PATH="$HELPER_DIR/openclaw-switch-model"
+REAUTH_PATH="$HELPER_DIR/openclaw-factory-reauth"
 mkdir -p "$HELPER_DIR"
 
-# Скачиваем актуальную версию helper из репы
-HELPER_URL="https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/openclaw-switch-model.sh"
-if curl -fsSL "$HELPER_URL" -o "$HELPER_PATH" 2>/dev/null; then
+# Скачиваем оба helper'а из репы. Helpers лежат рядом в одной директории.
+HELPERS_BASE="https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts"
+
+# 1. switch-model — быстрая смена модели
+if curl -fsSL "${HELPERS_BASE}/openclaw-switch-model.sh" -o "$HELPER_PATH" 2>/dev/null; then
   chmod +x "$HELPER_PATH"
   echo -e "   ${GREEN}✓${NC} Установлен: ${HELPER_PATH}"
 else
-  echo -e "   ${YELLOW}○${NC} Не смог скачать helper — пропускаю (не критично)"
+  echo -e "   ${YELLOW}○${NC} Не смог скачать switch-model helper — пропускаю (не критично)"
   HELPER_PATH=""
+fi
+
+# 2. factory-reauth — перезапись API-ключа (кейс Саввы из отчёта куратора).
+# Ставим ровно так же, чтобы ~/.openclaw/bin уже был в PATH после switch-model.
+if curl -fsSL "${HELPERS_BASE}/openclaw-factory-reauth.sh" -o "$REAUTH_PATH" 2>/dev/null; then
+  chmod +x "$REAUTH_PATH"
+  echo -e "   ${GREEN}✓${NC} Установлен: ${REAUTH_PATH}"
+else
+  echo -e "   ${YELLOW}○${NC} Не смог скачать reauth helper — пропускаю (не критично)"
 fi
 
 # Добавляем ~/.openclaw/bin в PATH, если ещё нет
@@ -2771,6 +3200,20 @@ else
 
   divider
 
+  # ─── Подсказка 1.5: перезаписать API-ключ если 401 ───
+  echo -e "   ${BOLD}${WHITE}▸ Бот пишет 'HTTP 401: Invalid API key'${NC}"
+  echo -e "   ${DIM}   Одна команда — перезапишет ключ, почистит сессии, рестартит gateway:${NC}"
+  echo ""
+  echo -e "      ${GREEN}openclaw-factory-reauth${NC}                     ${DIM}# интерактивно${NC}"
+  echo -e "      ${GREEN}openclaw-factory-reauth --provider opencode${NC}  ${DIM}# без меню выбора${NC}"
+  echo -e "      ${GREEN}openclaw-factory-reauth --help${NC}               ${DIM}# подробная справка${NC}"
+  echo ""
+  echo -e "   ${DIM}   Что делает: бэкапит auth-profiles.json, просит новый ключ со skr-...,${NC}"
+  echo -e "   ${DIM}   перезаписывает в правильный формат, чистит сессии, рестартит gateway.${NC}"
+  echo ""
+
+  divider
+
   # ─── Подсказка 2: поменять "характер" ассистента ───
   echo -e "   ${BOLD}${WHITE}▸ Хочу изменить характер / стиль ответов ассистента${NC}"
   echo -e "   ${DIM}   Личность агента живёт в двух файлах:${NC}"
@@ -2949,6 +3392,14 @@ else
   echo -e "   ${DIM}   Печатайте пароль от Mac (не Apple ID) вслепую и жмите Enter.${NC}"
   echo -e "   ${DIM}   Если 'user is not in the sudoers file' — вы не admin на Mac.${NC}"
   echo -e "   ${DIM}   Решение: зайдите в macOS на admin-аккаунт и запустите скрипт заново.${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}14. Ничего не помогает / хочу отправить полную диагностику в саппорт${NC}"
+  echo -e "   ${DIM}   Одна команда — соберёт debug-bundle в ~/openclaw-debug-*.zip:${NC}"
+  echo -e "      ${GREEN}bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts/demo-install.sh) --collect-debug${NC}"
+  echo -e "   ${DIM}   В bundle'е: конфиг OpenClaw, статус gateway, логи, версии и система.${NC}"
+  echo -e "   ${DIM}   Все потенциальные секреты автоматически замаскированы.${NC}"
+  echo -e "   ${DIM}   Перешлите файл в поддержку — так быстрее всего починят.${NC}"
   echo ""
 
   divider
