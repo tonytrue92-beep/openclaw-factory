@@ -1,0 +1,67 @@
+# Lint and smoke-test the installer on every push to main/PR.
+# This workflow does NOT use any user-controlled inputs (issue/PR titles,
+# commit messages, etc.) in its run steps — it only operates on files
+# in the repository and tool outputs. So no command-injection surface.
+
+name: Lint & smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      - name: Run shellcheck
+        run: |
+          # --severity=warning: игнорируем style/info (шум);
+          # --exclude: отключаем проверки, которые у нас осознанные:
+          #   SC1090/1091 — dynamic source paths (используем в смоке);
+          #   SC2155 — declare-and-assign (косметика);
+          #   SC2086 — quoting (иногда оправдано).
+          shellcheck \
+            --severity=warning \
+            --exclude=SC1090,SC1091,SC2155,SC2086 \
+            scripts/demo-install.sh \
+            scripts/openclaw-switch-model.sh \
+            scripts/install-claude-proxy.sh
+
+  syntax:
+    name: bash -n (syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check syntax of all shell scripts
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh; do
+            echo "checking $f"
+            bash -n "$f"
+          done
+          echo "all scripts pass bash -n"
+
+  smoke:
+    name: Helper functions smoke-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and run helpers
+        run: bash .github/workflows/smoke-test.sh
