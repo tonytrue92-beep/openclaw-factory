@@ -8,6 +8,31 @@
 
 ---
 
+## 2026-04-18 — Wave 4 (VPS deployment)
+
+### Added
+- **Пункт 4 «Развернуть на VPS сервере»** в главном меню установщика.
+  Показывает пошаговый гайд для ученика с нулевым техбэкграундом: как
+  выбрать VPS (Timeweb / Beget / Hetzner / DigitalOcean с ценами), как
+  подключиться по SSH (инструкции для Mac и Windows), какую команду
+  запустить на VPS, как отключиться без потери бота.
+- **Флаг `--vps` / `--headless`** — режим установки на Linux-сервер:
+  пропускает macOS-специфичные шаги (Homebrew, xcode-select, admin-check),
+  не пытается открыть браузер через `open`/`xdg-open`, в post-install
+  даёт готовую SSH-tunnel команду для dashboard (с автоопределением IP
+  из `$SSH_CONNECTION`).
+- **`docs/vps-install.md`** — полный гайд (300+ строк): провайдеры,
+  тарифы, SSH, troubleshooting, FAQ, чек-лист для распечатки.
+
+### Команда для VPS
+```bash
+# На самом VPS после SSH:
+bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/\
+openclaw-factory/main/scripts/demo-install.sh) --vps --install
+```
+
+---
+
 ## 2026-04-18 — Wave 3 (observability++ и безопасность)
 
 ### Security

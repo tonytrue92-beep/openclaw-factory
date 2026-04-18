@@ -48,6 +48,7 @@ for arg in "$@"; do
       echo "Options:"
       echo "  --install         Skip demo, go straight to real installation"
       echo "  --dry-run         Simulate the full installation (nothing is installed)"
+      echo "  --vps, --headless VPS mode (Linux server, no GUI, SSH-tunnel for dashboard)"
       echo "  --diagnose-only   Check existing OpenClaw install without changing anything"
       echo "  --collect-debug   Collect debug bundle for support (non-interactive)"
       echo "  --version         Print installer version and exit"
@@ -86,6 +87,7 @@ SKIP_DEMO=false
 DRY_RUN=false
 COLLECT_DEBUG_ONLY=false  # флаг для --collect-debug; сам вызов ниже, после определения функций
 DIAGNOSE_ONLY=false       # флаг для --diagnose-only; сам вызов там же
+VPS_MODE=false            # флаг для --vps; меняет поведение R1/R6 (skip macOS checks, no GUI)
 
 # Остальные флаги (меняющие состояние) — после TTY-инициализации
 for arg in "$@"; do
@@ -95,6 +97,14 @@ for arg in "$@"; do
     --version|-V|--help|-h) : ;;  # уже обработано выше
     --collect-debug) COLLECT_DEBUG_ONLY=true ;;
     --diagnose-only) DIAGNOSE_ONLY=true ;;
+    --vps|--headless)
+      # VPS-режим: бот поднимается на удалённом Linux-сервере,
+      # никаких macOS-specific шагов (Homebrew/Xcode), никаких GUI
+      # (open/xdg-open), в post-install SSH-tunnel инструкция.
+      # Подразумевает --install (на VPS нет смысла в демо/меню).
+      VPS_MODE=true
+      SKIP_DEMO=true
+      ;;
   esac
 done
 
@@ -953,6 +963,131 @@ record_telemetry() {
   # (в фоне, с коротким таймаутом — чтобы не тормозить установку)
 }
 
+# ─── VPS guide — печатается при выборе пункта 4 в главном меню ──
+#
+# Задача: провести ученика с нулевым техническим бэкграундом от
+# «хочу чтобы бот не выключался» до «вот готовая команда для запуска
+# на VPS». Не пытаемся научить его Linux — даём copy-paste шаги.
+#
+# Детальная версия того же гайда лежит в docs/vps-install.md и
+# доступна на GitHub.
+show_vps_guide() {
+  clear
+  echo ""
+  echo -e "${BOLD}${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${BOLD}${MAGENTA}  📦  РАЗВЕРНУТЬ OPENCLAW НА VPS СЕРВЕРЕ${NC}"
+  echo -e "${BOLD}${MAGENTA}  (чтобы бот работал 24/7, даже когда ноут выключен)${NC}"
+  echo -e "${BOLD}${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo ""
+
+  explain "Что такое VPS простыми словами" \
+    "" \
+    "VPS — это удалённый компьютер в интернете, который работает всегда." \
+    "Вы платите ${BOLD}200-500 ₽/мес${NC} (или \$5-10/мес) и получаете" \
+    "виртуальный Linux, куда можно удалённо ставить бота." \
+    "" \
+    "Зачем: ваш Telegram-бот будет отвечать людям ${BOLD}24/7${NC} — даже" \
+    "когда вы спите или уехали в отпуск. Никаких «закрыл ноут — бот умер»."
+
+  divider
+
+  echo -e "${BOLD}${WHITE}ШАГ 1. Купить VPS${NC}"
+  echo ""
+  echo -e "   ${BOLD}Рекомендуемые в РФ:${NC}"
+  echo -e "      ${CYAN}•${NC} Timeweb Cloud  — ${DIM}от 230 ₽/мес, самый простой интерфейс${NC}"
+  echo -e "        ${CYAN}https://timeweb.cloud/${NC}"
+  echo -e "      ${CYAN}•${NC} Beget          — ${DIM}от 200 ₽/мес, старый и надёжный${NC}"
+  echo -e "        ${CYAN}https://beget.com/${NC}"
+  echo ""
+  echo -e "   ${BOLD}За рубежом:${NC}"
+  echo -e "      ${CYAN}•${NC} Hetzner        — ${DIM}€4.5/мес, самый дешёвый в мире${NC}"
+  echo -e "        ${CYAN}https://www.hetzner.com/${NC}"
+  echo -e "      ${CYAN}•${NC} DigitalOcean   — ${DIM}\$5/мес, проще всех${NC}"
+  echo -e "        ${CYAN}https://www.digitalocean.com/${NC}"
+  echo ""
+  echo -e "   ${BOLD}Что выбрать при заказе:${NC}"
+  echo -e "      • ОС: ${GREEN}Ubuntu 22.04${NC} или ${GREEN}24.04 LTS${NC}"
+  echo -e "      • RAM: минимум ${BOLD}1 GB${NC} (хватит)"
+  echo -e "      • Диск: ${BOLD}25 GB SSD${NC}"
+  echo -e "      • Локация: ближе к вам (Moscow / Frankfurt / Amsterdam)"
+  echo ""
+  echo -e "   ${BOLD}После оплаты провайдер пришлёт на почту:${NC}"
+  echo -e "      • IP-адрес (вида ${DIM}195.161.xxx.xxx${NC})"
+  echo -e "      • Логин (обычно ${BOLD}root${NC})"
+  echo -e "      • Пароль"
+  echo ""
+  echo -e "   ${YELLOW}⚠️${NC}  ${DIM}Никому не отправляйте эти данные. Если кто-то просит${NC}"
+  echo -e "       ${DIM}«скиньте для установки» — это мошенник.${NC}"
+
+  divider
+
+  echo -e "${BOLD}${WHITE}ШАГ 2. Подключиться к VPS по SSH${NC}"
+  echo ""
+  echo -e "   ${BOLD}На Mac:${NC}"
+  echo -e "      1. Откройте ${BOLD}Терминал${NC} (${DIM}Cmd+Space → «Терминал»${NC})"
+  echo -e "      2. Введите команду (заменив IP на свой):"
+  echo ""
+  echo -e "         ${GREEN}ssh root@195.161.41.77${NC}"
+  echo ""
+  echo -e "      3. Первый раз спросит ${DIM}«Are you sure?»${NC} — отвечайте ${BOLD}yes${NC}"
+  echo -e "      4. Введите пароль из письма (${YELLOW}символов не видно${NC} — это норма)"
+  echo ""
+  echo -e "   ${BOLD}На Windows:${NC}"
+  echo -e "      1. Откройте ${BOLD}PowerShell${NC} (${DIM}⊞Win → «powershell»${NC})"
+  echo -e "      2. Та же команда: ${GREEN}ssh root@<ip>${NC}"
+  echo -e "      3. Дальше так же: yes → пароль → вы внутри"
+  echo ""
+  echo -e "   ${DIM}Признак что вы в SSH: строка приглашения становится${NC}"
+  echo -e "   ${DIM}${BOLD}root@vps-1:~#${NC}${DIM} (было что-то типа ${BOLD}user@MacBook:~\$${NC}${DIM}).${NC}"
+
+  divider
+
+  echo -e "${BOLD}${WHITE}ШАГ 3. Запустить установщик на VPS${NC}"
+  echo ""
+  echo -e "   ${DIM}Вот команда — скопируйте её целиком и вставьте в SSH-сессию:${NC}"
+  echo ""
+  echo -e "   ${DIM}┌─ 📋 скопируйте эту команду (без \$) ─────────────────────────────┐${NC}"
+  echo -e "   ${DIM}│${NC} ${YELLOW}\$${NC} ${GREEN}${BOLD}bash <(curl -fsSL https://raw.githubusercontent.com/${NC}"
+  echo -e "   ${DIM}│${NC}   ${GREEN}${BOLD}tonytrue92-beep/openclaw-factory/main/scripts/${NC}"
+  echo -e "   ${DIM}│${NC}   ${GREEN}${BOLD}demo-install.sh) --vps --install${NC}"
+  echo -e "   ${DIM}└──────────────────────────────────────────────────────────────────┘${NC}"
+  echo ""
+  echo -e "   ${BOLD}Дальше всё как на обычном компьютере:${NC}"
+  echo -e "      • введёте ${BOLD}API-ключ opencode.ai${NC} (sk-...)"
+  echo -e "      • введёте ${BOLD}Telegram bot token${NC} (из @BotFather)"
+  echo -e "      • введёте свой ${BOLD}Telegram user ID${NC} (узнать через @userinfobot)"
+  echo ""
+  echo -e "   Через ${BOLD}3-5 минут${NC} бот будет работать. Напишите ему в Telegram — ответит."
+
+  divider
+
+  echo -e "${BOLD}${WHITE}ШАГ 4. Отключиться, не потеряв бота${NC}"
+  echo ""
+  echo -e "   ${DIM}В SSH-сессии просто введите:${NC}"
+  echo ""
+  echo -e "      ${GREEN}exit${NC}"
+  echo ""
+  echo -e "   Бот продолжит работать. Его запускает ${BOLD}systemd${NC} — это «фоновая"
+  echo -e "   служба», которая сама поднимает бота при любой перезагрузке VPS."
+  echo -e "   Ваш ноут можно закрывать, выключать — VPS всё равно, он работает."
+
+  divider
+
+  echo -e "${BOLD}${WHITE}Полный гайд с картинками и FAQ:${NC}"
+  echo -e "   ${CYAN}https://github.com/tonytrue92-beep/openclaw-factory/blob/main/docs/vps-install.md${NC}"
+  echo ""
+  echo -e "${BOLD}${WHITE}Что там есть дополнительно:${NC}"
+  echo -e "   • Как открыть dashboard VPS через SSH-туннель"
+  echo -e "   • Что делать, если бот замолчал"
+  echo -e "   • Как обновить OpenClaw когда выйдет новая версия"
+  echo -e "   • Как переустановить всё с нуля"
+  echo -e "   • 10+ типовых вопросов"
+  echo ""
+  echo -e "${BOLD}${GREEN}Удачи! ${NC}${DIM}Если что-то пошло не так — напишите в саппорт курса,${NC}"
+  echo -e "${DIM}приложите debug-bundle (соберётся автоматически при ошибке).${NC}"
+  echo ""
+}
+
 # ─── --diagnose-only: live-проверка состояния без изменений ─────
 #
 # Когда использовать:
@@ -1479,10 +1614,14 @@ LOGO
   echo -e "   ${BOLD}${CYAN}  3)${NC}  ${BOLD}Симуляция установки${NC} — прогон процесса без реальных изменений."
   echo -e "       ${DIM}Полезно, если хочется сначала увидеть каждый шаг своими глазами.${NC}"
   echo ""
+  echo -e "   ${BOLD}${MAGENTA}  4)${NC}  ${BOLD}Развернуть на VPS сервере${NC} — бот работает 24/7 на отдельном сервере."
+  echo -e "       ${DIM}Для тех, кто хочет чтобы бот не выключался вместе с ноутом.${NC}"
+  echo -e "       ${DIM}Покажу полную инструкцию — от покупки VPS до рабочего бота.${NC}"
+  echo ""
 
   divider
 
-  echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2/3]:${NC}"
+  echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2/3/4]:${NC}"
   echo ""
   read -r INITIAL_CHOICE
 
@@ -1494,6 +1633,12 @@ LOGO
     3)
       SKIP_DEMO=true
       DRY_RUN=true
+      ;;
+    4)
+      # VPS-гайд — печатаем инструкцию и выходим; установка на этой
+      # машине не нужна, клиент пойдёт запускать команду на VPS.
+      show_vps_guide
+      exit 0
       ;;
     1|"")
       # Идём в демо — SKIP_DEMO остаётся false
@@ -2503,6 +2648,9 @@ pause
 # скрипт запущен у пользователя (вдруг закэшировал старый curl).
 echo ""
 echo -e "${DIM}   OpenClaw Factory Installer v${INSTALLER_VERSION} (${INSTALLER_COMMIT})${NC}"
+if [[ "$VPS_MODE" == true ]]; then
+  echo -e "${BOLD}${MAGENTA}   🌐 VPS-режим: Linux-сервер, headless, systemd-service${NC}"
+fi
 echo -e "${DIM}   При обращении в поддержку — пришлите эти цифры, так быстрее${NC}"
 echo -e "${DIM}   Или одной командой: bash <(curl ...) --collect-debug${NC}"
 
@@ -2599,9 +2747,14 @@ else
     OPENCLAW_INSTALLED=false
   fi
 
-  # Если brew нет — предлагаем поставить ПОСЛЕ проверки всего
-  if [[ "$HOMEBREW_INSTALLED" == false ]]; then
+  # Если brew нет — предлагаем поставить ПОСЛЕ проверки всего.
+  # В VPS-режиме Homebrew не ставим: на Linux-сервере есть apt и не
+  # нужны macOS-specific скиллы. Для базового Telegram-бота brew не
+  # критичен нигде, поэтому даже на Mac это опциональный шаг.
+  if [[ "$HOMEBREW_INSTALLED" == false && "$VPS_MODE" != true ]]; then
     prompt_install_homebrew
+  elif [[ "$VPS_MODE" == true ]]; then
+    echo -e "   ${DIM}(VPS-режим — Homebrew не требуется, пропускаем)${NC}"
   fi
 fi
 
@@ -3492,8 +3645,30 @@ else
   echo -e "   ${CYAN}4.${NC} Если что-то сломалось: ${BOLD}openclaw doctor --fix${NC}"
   echo ""
 
-  # Предложим открыть dashboard прямо сейчас (не обязательно, но приятно)
-  if command -v open &>/dev/null; then
+  # В VPS-режиме нет смысла в `open` — мы на headless Linux, GUI нет.
+  # Вместо этого даём инструкцию по SSH-туннелю (чтобы dashboard VPS
+  # можно было открыть в браузере на своём Mac/Windows).
+  if [[ "$VPS_MODE" == true ]]; then
+    echo -e "   ${BOLD}${WHITE}Dashboard работает на VPS локально (${CYAN}127.0.0.1:18789${NC}${BOLD}${WHITE}).${NC}"
+    echo -e "   ${DIM}Чтобы открыть в браузере на вашей машине — нужен SSH-туннель.${NC}"
+    echo ""
+    echo -e "   ${BOLD}На Mac / Windows (в НОВОМ окне терминала, не SSH-сессии):${NC}"
+    # Пытаемся определить IP из SSH_CONNECTION (если залогинены по SSH)
+    _vps_host="<ip-вашего-vps>"
+    if [[ -n "${SSH_CONNECTION:-}" ]]; then
+      # SSH_CONNECTION формата: "client-ip client-port server-ip server-port"
+      _vps_host=$(echo "$SSH_CONNECTION" | awk '{print $3}')
+    fi
+    echo -e "      ${GREEN}ssh -L 18789:127.0.0.1:18789 root@${_vps_host}${NC}"
+    echo ""
+    echo -e "   ${DIM}Пока эта команда висит — откройте в браузере:${NC}"
+    echo -e "      ${CYAN}http://127.0.0.1:18789${NC}"
+    echo ""
+    echo -e "   ${DIM}Закрыть туннель: Ctrl+C в терминале с туннелем.${NC}"
+    unset _vps_host
+    echo ""
+  # Предложим открыть dashboard прямо сейчас на macOS
+  elif command -v open &>/dev/null; then
     echo -e "   ${BOLD}${WHITE}Открыть dashboard сейчас? [Y/n]:${NC}"
     read -r _open_dash
     _open_dash="${_open_dash:-y}"
