@@ -95,6 +95,7 @@ for arg in "$@"; do
 done
 
 # Цвета
+# shellcheck disable=SC2034  # BLUE зарезервирован для потенциального использования
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -2477,6 +2478,7 @@ else
           openclaw reset --scope config+creds+sessions --yes --non-interactive &>/dev/null || true
           NEED_KEY_INPUT=true
           # И запустим полный R3 с нуля
+          # shellcheck disable=SC2034  # зарезервировано для расширений R3
           FULL_FRESH_SETUP=true
         else
           echo -e "   ${DIM}Сброс отменён, оставляю как есть.${NC}"
@@ -2507,6 +2509,7 @@ else
     divider
 
     # ---- Провайдер и модель ----
+    # shellcheck disable=SC2034  # PROVIDER используется в документации блока ниже
     PROVIDER="opencode"
     MODEL="opencode/minimax-m2.5-free"
     KEY_URL="https://opencode.ai"
