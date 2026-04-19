@@ -49,6 +49,18 @@ bash demo-install.sh
 Смотрите этот файл, чтобы узнать, что поменялось в последней версии —
 какие баги починены, какие фичи добавлены, какие breaking changes.
 
+### 🎯 Следующий шаг — команда из трёх агентов
+
+После того как OpenClaw поставлен и бот отвечает, есть второй установщик:
+
+**[openclaw-agents-pack](https://github.com/tonytrue92-beep/openclaw-agents-pack)** — добавляет трёх предустановленных агентов (Технарь 🔧 / Маркетолог 📈 / Продюсер 🎬), каждого в своём Telegram-боте.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-agents-pack/main/scripts/install-agents.sh)
+```
+
+Требует: рабочий OpenClaw (через этот установщик) + три токена ботов от @BotFather.
+
 ---
 
 ## 📖 Что внутри
