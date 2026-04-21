@@ -1,6 +1,6 @@
 # SHA-256 checksums for publicly distributed installer scripts.
-# Generated: 2026-04-21 17:46:52 UTC
-# Commit: 495eb05
+# Generated: 2026-04-21 17:46:54 UTC
+# Commit: d1f085e
 #
 # Verify a downloaded script matches the committed version:
 #   curl -fsSL <raw-url> | shasum -a 256
