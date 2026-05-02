@@ -49,6 +49,7 @@ for arg in "$@"; do
       echo "  --install         Skip demo, go straight to real installation"
       echo "  --dry-run         Simulate the full installation (nothing is installed)"
       echo "  --vps, --headless VPS mode (Linux server, no GUI, SSH-tunnel for dashboard)"
+      echo "  --course-token T  Course-token from @AITeamVIPBot (STD-... or VIP-...)"
       echo "  --diagnose-only   Check existing OpenClaw install without changing anything"
       echo "  --collect-debug   Collect debug bundle for support (non-interactive)"
       echo "  --version         Print installer version and exit"
@@ -88,15 +89,24 @@ DRY_RUN=false
 COLLECT_DEBUG_ONLY=false  # флаг для --collect-debug; сам вызов ниже, после определения функций
 DIAGNOSE_ONLY=false       # флаг для --diagnose-only; сам вызов там же
 VPS_MODE=false            # флаг для --vps; меняет поведение R1/R6 (skip macOS checks, no GUI)
+COURSE_TOKEN_PRESET="${COURSE_TOKEN:-}"  # env или --course-token / --vip-token
 
 # Остальные флаги (меняющие состояние) — после TTY-инициализации
-for arg in "$@"; do
+while [[ $# -gt 0 ]]; do
+  arg="$1"
   case "$arg" in
     --install|--real|--skip-demo) SKIP_DEMO=true ;;
     --dry-run|--simulate) DRY_RUN=true; SKIP_DEMO=true ;;
     --version|-V|--help|-h) : ;;  # уже обработано выше
     --collect-debug) COLLECT_DEBUG_ONLY=true ;;
     --diagnose-only) DIAGNOSE_ONLY=true ;;
+    --course-token|--vip-token)
+      shift
+      COURSE_TOKEN_PRESET="${1:-}"
+      ;;
+    --course-token=*|--vip-token=*)
+      COURSE_TOKEN_PRESET="${arg#*=}"
+      ;;
     --vps|--headless)
       # VPS-режим: бот поднимается на удалённом Linux-сервере,
       # никаких macOS-specific шагов (Homebrew/Xcode), никаких GUI
@@ -106,6 +116,7 @@ for arg in "$@"; do
       SKIP_DEMO=true
       ;;
   esac
+  shift || true
 done
 
 # Цвета
@@ -210,6 +221,280 @@ divider() {
   echo ""
   echo -e "${DIM}   ─────────────────────────────────────────────────────────────${NC}"
   echo ""
+}
+
+# ═══ Course-token (wave 12): локальная Ed25519-проверка STD/VIP ═══
+# Встроено в первый установщик, чтобы нельзя было поставить OpenClaw
+# движок без оплаты курса. С тем же public key, что и agents-pack.
+COURSE_TOKEN_CACHE="$HOME/.openclaw/course-token"
+COURSE_TIER=""
+COURSE_TOKEN=""
+
+COURSE_PUBLIC_KEY_PEM=$(cat <<'EOF'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAQIjPPB5LB1R3outrY1HMaVRVUB2tkDhHtpC8LLJ+8rA=
+-----END PUBLIC KEY-----
+EOF
+)
+
+course_token_get_tier() {
+  local token="$1"
+  if [[ "$token" =~ ^(VIP|STD)- ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
+}
+
+course_token_expected_tg() {
+  local token="$1"
+  if [[ "$token" =~ ^(VIP|STD)-[A-F0-9]{16}-([0-9]{5,15})-[A-Za-z0-9_-]{80,120}$ ]]; then
+    printf '%s' "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  return 1
+}
+
+course_token_load_cache() {
+  if [[ -f "$COURSE_TOKEN_CACHE" ]]; then
+    local perms
+    perms=$(stat -f '%A' "$COURSE_TOKEN_CACHE" 2>/dev/null \
+              || stat -c '%a' "$COURSE_TOKEN_CACHE" 2>/dev/null \
+              || echo "?")
+    [[ "$perms" != "600" && "$perms" != "?" ]] && return 1
+    tr -d '[:space:]' < "$COURSE_TOKEN_CACHE" 2>/dev/null || true
+  fi
+}
+
+course_token_save_cache() {
+  local token="$1"
+  mkdir -p "$(dirname "$COURSE_TOKEN_CACHE")"
+  ( umask 077; printf '%s\n' "$token" > "$COURSE_TOKEN_CACHE" )
+  chmod 600 "$COURSE_TOKEN_CACHE" 2>/dev/null || true
+}
+
+course_token_clear_cache() {
+  rm -f "$COURSE_TOKEN_CACHE" 2>/dev/null || true
+}
+
+course_decode_b64url() {
+  local sig="$1"
+  local out="$2"
+  python3 - "$sig" "$out" <<'PY_B64'
+import base64, sys
+sig, out = sys.argv[1], sys.argv[2]
+padded = sig + '=' * (-len(sig) % 4)
+with open(out, 'wb') as fh:
+    fh.write(base64.urlsafe_b64decode(padded.encode()))
+PY_B64
+}
+
+course_verify_ed25519_signature() {
+  local payload="$1"
+  local sig_part="$2"
+
+  if command -v node >/dev/null 2>&1; then
+    if COURSE_PUBLIC_KEY_PEM="$COURSE_PUBLIC_KEY_PEM" COURSE_PAYLOAD="$payload" COURSE_SIG_B64="$sig_part" node - <<'JS_VERIFY' >/dev/null 2>&1
+const crypto = require('crypto');
+try {
+  const publicKey = crypto.createPublicKey(process.env.COURSE_PUBLIC_KEY_PEM);
+  const payload = Buffer.from(process.env.COURSE_PAYLOAD || '', 'utf8');
+  const signature = Buffer.from(process.env.COURSE_SIG_B64 || '', 'base64url');
+  process.exit(crypto.verify(null, payload, publicKey, signature) ? 0 : 1);
+} catch {
+  process.exit(1);
+}
+JS_VERIFY
+    then
+      return 0
+    fi
+  fi
+
+  local tmpdir
+  tmpdir=$(mktemp -d -t course-token.XXXXXX)
+  chmod 700 "$tmpdir" 2>/dev/null || true
+  printf '%s' "$payload" > "$tmpdir/payload.txt"
+  printf '%s\n' "$COURSE_PUBLIC_KEY_PEM" > "$tmpdir/public.pem"
+
+  if ! course_decode_b64url "$sig_part" "$tmpdir/signature.bin"; then
+    rm -rf "$tmpdir"
+    return 4
+  fi
+
+  if openssl pkeyutl -verify -pubin -inkey "$tmpdir/public.pem" \
+       -rawin -in "$tmpdir/payload.txt" -sigfile "$tmpdir/signature.bin" \
+       >/dev/null 2>&1; then
+    rm -rf "$tmpdir"
+    return 0
+  fi
+
+  rm -rf "$tmpdir"
+  return 5
+}
+
+course_verify_token() {
+  local token="$1"
+  local machine_tg_id="$2"
+
+  local tier hash_part tg_part sig_part
+  if [[ "$token" =~ ^(VIP|STD)-([A-F0-9]{16})-([0-9]{5,15})-([A-Za-z0-9_-]{80,120})$ ]]; then
+    tier="${BASH_REMATCH[1]}"
+    hash_part="${BASH_REMATCH[2]}"
+    tg_part="${BASH_REMATCH[3]}"
+    sig_part="${BASH_REMATCH[4]}"
+
+    if [[ -n "$machine_tg_id" && "$tg_part" != "$machine_tg_id" ]]; then
+      return 3
+    fi
+
+    # v3: tier явно подписан. Для VIP оставляем fallback на legacy v2 payload.
+    if course_verify_ed25519_signature "${tier}|${hash_part}|${tg_part}" "$sig_part"; then
+      COURSE_TIER="$tier"
+      COURSE_TOKEN="$token"
+      return 0
+    fi
+    if [[ "$tier" == "VIP" ]] && course_verify_ed25519_signature "${hash_part}|${tg_part}" "$sig_part"; then
+      COURSE_TIER="VIP"
+      COURSE_TOKEN="$token"
+      return 0
+    fi
+    return 5
+  fi
+
+  # Legacy v1 VIP: подпись валидна, но TG-binding нет. Принимаем только для VIP backward-compat.
+  if [[ "$token" =~ ^VIP-([A-F0-9]{16})-([A-Za-z0-9_-]{80,120})$ ]]; then
+    hash_part="${BASH_REMATCH[1]}"
+    sig_part="${BASH_REMATCH[2]}"
+    if course_verify_ed25519_signature "$hash_part" "$sig_part"; then
+      COURSE_TIER="VIP"
+      COURSE_TOKEN="$token"
+      return 6
+    fi
+    return 5
+  fi
+
+  return 2
+}
+
+course_detect_owner_tg_id() {
+  local cfg="$HOME/.openclaw/openclaw.json"
+  [[ ! -f "$cfg" ]] && return 0
+
+  local tg_id
+  tg_id=$(grep -oE '"allowFrom"[[:space:]]*:[[:space:]]*\[[[:space:]]*"[0-9]+"' "$cfg" \
+            | grep -oE '"[0-9]+"' | head -1 | tr -d '"')
+
+  if [[ -z "$tg_id" ]]; then
+    tg_id=$(grep -oE '"allowlistAllowFrom"[[:space:]]*:[[:space:]]*\[[[:space:]]*"[0-9]+"' "$cfg" \
+              | grep -oE '"[0-9]+"' | head -1 | tr -d '"')
+  fi
+
+  printf '%s' "${tg_id:-}"
+}
+
+course_validate_and_set() {
+  local token="$1"
+  local machine_tg_id="$2"
+
+  COURSE_TOKEN=""
+  COURSE_TIER=""
+  if [[ -z "$(course_token_get_tier "$token" 2>/dev/null)" ]]; then
+    warn "Формат токена не распознан. Ожидается VIP-... или STD-..."
+    return 1
+  fi
+
+  course_verify_token "$token" "$machine_tg_id"
+  local rc=$?
+  case $rc in
+    0|6)
+      return 0
+      ;;
+    3)
+      local expected_tg
+      expected_tg=$(course_token_expected_tg "$token" 2>/dev/null || echo "?")
+      warn "Токен выдан для TG ID ${expected_tg}, а указан ${machine_tg_id}."
+      echo -e "   ${DIM}Получи свой токен в @AITeamVIPBot с того же Telegram-аккаунта.${NC}"
+      return 1
+      ;;
+    *)
+      warn "Course-token не прошёл проверку (код $rc). Получи свежий в @AITeamVIPBot."
+      return 1
+      ;;
+  esac
+}
+
+acquire_course_token_for_install() {
+  local preset_token="$1"
+  local machine_tg_id="$2"
+
+  if [[ -n "$preset_token" ]]; then
+    if course_validate_and_set "$preset_token" "$machine_tg_id"; then
+      course_token_save_cache "$COURSE_TOKEN"
+      return 0
+    fi
+  fi
+
+  local cached
+  cached=$(course_token_load_cache || true)
+  if [[ -n "$cached" ]]; then
+    if course_validate_and_set "$cached" "$machine_tg_id"; then
+      echo -e "   ${GREEN}✓${NC} Использую кэшированный course-token (${COURSE_TIER}-тариф)"
+      return 0
+    fi
+    warn "Кэшированный course-token больше не валиден. Запрашиваю новый."
+    course_token_clear_cache
+  fi
+
+  explain "Для установки OpenClaw нужен course-token." \
+    "Получи его в Telegram-боте курса:" \
+    "  ${BOLD}@AITeamVIPBot${NC} → /start → email/phone оплаты" \
+    "" \
+    "Формат:" \
+    "  ${DIM}STD-XXXXXXXXXXXXXXXX-<TG_ID>-<подпись>  (Standard)${NC}" \
+    "  ${DIM}VIP-XXXXXXXXXXXXXXXX-<TG_ID>-<подпись>  (VIP)${NC}"
+
+  local attempts=0
+  while [[ $attempts -lt 3 ]]; do
+    attempts=$((attempts + 1))
+    echo -e "   ${BOLD}${WHITE}Вставь course-token (попытка ${attempts}/3):${NC}"
+    local token
+    read -r token
+    [[ -z "$token" ]] && { warn "Пустой ввод."; continue; }
+    if course_validate_and_set "$token" "$machine_tg_id"; then
+      course_token_save_cache "$COURSE_TOKEN"
+      echo -e "   ${GREEN}✓${NC} Токен подтверждён (${COURSE_TIER}-тариф). Сохранил для следующих запусков."
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+require_course_token_before_real_install() {
+  [[ "$DRY_RUN" == true ]] && return 0
+
+  step_header "R0" "COURSE-TOKEN"
+
+  local machine_tg_id
+  machine_tg_id=$(course_detect_owner_tg_id)
+  if [[ -z "$machine_tg_id" ]]; then
+    explain "Нужен Telegram user ID для anti-sharing проверки." \
+      "Если не знаешь ID — напиши @userinfobot в Telegram." \
+      "Важно: это ID твоего Telegram-аккаунта, НЕ токен BotFather."
+    echo -e "   ${BOLD}${WHITE}Введите ваш Telegram user ID:${NC}"
+    read -r machine_tg_id
+    [[ ! "$machine_tg_id" =~ ^[0-9]+$ ]] && { warn "TG ID должен быть числом."; exit 1; }
+  else
+    echo -e "   ${GREEN}✓${NC} Ваш Telegram ID из текущей настройки OpenClaw: ${BOLD}${machine_tg_id}${NC}"
+  fi
+
+  if ! acquire_course_token_for_install "$COURSE_TOKEN_PRESET" "$machine_tg_id"; then
+    warn "Course-token не получен. Установка прервана."
+    echo -e "   ${DIM}Получи токен: ${BOLD}@AITeamVIPBot${NC}${DIM} → /start → email/phone оплаты.${NC}"
+    exit 1
+  fi
+
+  ok "Course-token подтверждён (${BOLD}${COURSE_TIER}${NC}-тариф). Можно продолжать установку."
 }
 
 # Прописать nvm в shell rc-файлы, чтобы openclaw работал в новых терминалах
@@ -2629,14 +2914,17 @@ else
   explain "Отлично! Сейчас мы установим OpenClaw по-настоящему." \
     "" \
     "Вот что произойдёт:" \
-    "  1. Проверим, что Node.js и npm на месте" \
-    "  2. Установим OpenClaw (если ещё не установлен)" \
-    "  3. Запустим onboard — интерактивную настройку" \
-    "  4. Вы введёте токен Telegram-бота" \
-    "  5. Система автоматически создаст первого AI-ассистента" \
+    "  1. Проверим course-token из @AITeamVIPBot" \
+    "  2. Проверим, что Node.js и npm на месте" \
+    "  3. Установим OpenClaw (если ещё не установлен)" \
+    "  4. Запустим onboard — интерактивную настройку" \
+    "  5. Вы введёте токен Telegram-бота" \
+    "  6. Система автоматически создаст первого AI-ассистента" \
     "" \
     "Это займёт 3–5 минут."
 fi
+
+require_course_token_before_real_install
 
 pause
 
