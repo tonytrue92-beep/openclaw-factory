@@ -49,7 +49,7 @@ for arg in "$@"; do
       echo "  --install         Skip demo, go straight to real installation"
       echo "  --dry-run         Simulate the full installation (nothing is installed)"
       echo "  --vps, --headless VPS mode (Linux server, no GUI, SSH-tunnel for dashboard)"
-      echo "  --course-token T  Course-token from @AITeamVIPBot (STD-... or VIP-...)"
+      echo "  --course-token T  Course-token from @AITeamVIPBot (SUB-..., STD-... or VIP-...)"
       echo "  --diagnose-only   Check existing OpenClaw install without changing anything"
       echo "  --collect-debug   Collect debug bundle for support (non-interactive)"
       echo "  --version         Print installer version and exit"
@@ -223,7 +223,7 @@ divider() {
   echo ""
 }
 
-# ═══ Course-token (wave 12): локальная Ed25519-проверка STD/VIP ═══
+# ═══ Course-token (wave 12): локальная Ed25519-проверка SUB/STD/VIP ═══
 # Встроено в первый установщик, чтобы нельзя было поставить OpenClaw
 # движок без оплаты курса. С тем же public key, что и agents-pack.
 COURSE_TOKEN_CACHE="$HOME/.openclaw/course-token"
@@ -239,7 +239,7 @@ EOF
 
 course_token_get_tier() {
   local token="$1"
-  if [[ "$token" =~ ^(VIP|STD)- ]]; then
+  if [[ "$token" =~ ^(VIP|STD|SUB)- ]]; then
     printf '%s' "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -248,7 +248,7 @@ course_token_get_tier() {
 
 course_token_expected_tg() {
   local token="$1"
-  if [[ "$token" =~ ^(VIP|STD)-[A-F0-9]{16}-([0-9]{5,15})-[A-Za-z0-9_-]{80,120}$ ]]; then
+  if [[ "$token" =~ ^(VIP|STD|SUB)-[A-F0-9]{16}-([0-9]{5,15})-[A-Za-z0-9_-]{80,120}$ ]]; then
     printf '%s' "${BASH_REMATCH[2]}"
     return 0
   fi
@@ -337,7 +337,7 @@ course_verify_token() {
   local machine_tg_id="$2"
 
   local tier hash_part tg_part sig_part
-  if [[ "$token" =~ ^(VIP|STD)-([A-F0-9]{16})-([0-9]{5,15})-([A-Za-z0-9_-]{80,120})$ ]]; then
+  if [[ "$token" =~ ^(VIP|STD|SUB)-([A-F0-9]{16})-([0-9]{5,15})-([A-Za-z0-9_-]{80,120})$ ]]; then
     tier="${BASH_REMATCH[1]}"
     hash_part="${BASH_REMATCH[2]}"
     tg_part="${BASH_REMATCH[3]}"
@@ -399,7 +399,7 @@ course_validate_and_set() {
   COURSE_TOKEN=""
   COURSE_TIER=""
   if [[ -z "$(course_token_get_tier "$token" 2>/dev/null)" ]]; then
-    warn "Формат токена не распознан. Ожидается VIP-... или STD-..."
+    warn "Формат токена не распознан. Ожидается SUB-..., STD-... или VIP-..."
     return 1
   fi
 
@@ -450,6 +450,7 @@ acquire_course_token_for_install() {
     "  ${BOLD}@AITeamVIPBot${NC} → /start → email/phone оплаты" \
     "" \
     "Формат:" \
+    "  ${DIM}SUB-XXXXXXXXXXXXXXXX-<TG_ID>-<подпись>  (Subscription)${NC}" \
     "  ${DIM}STD-XXXXXXXXXXXXXXXX-<TG_ID>-<подпись>  (Standard)${NC}" \
     "  ${DIM}VIP-XXXXXXXXXXXXXXXX-<TG_ID>-<подпись>  (VIP)${NC}"
 
@@ -3916,6 +3917,19 @@ else
       echo -e "      ${DIM}Если 401 No payment method — вернуть на free:${NC}"
       echo -e "      ${DIM}openclaw config set agents.defaults.model.primary opencode/minimax-m2.5-free${NC}"
     fi
+    echo ""
+  fi
+
+  if [[ "${COURSE_TIER:-}" == "SUB" ]]; then
+    divider
+    echo -e "   ${BOLD}${GREEN}✓ Установка завершена!${NC}"
+    echo ""
+    echo -e "   ${BOLD}${WHITE}Твой тариф: SUB (подписка)${NC}"
+    echo -e "   ${GREEN}✓${NC} OpenClaw движок"
+    echo -e "   ${GREEN}✓${NC} main-агент в Telegram"
+    echo ""
+    echo -e "   ${DIM}Дополнительные агенты (Технарь / Маркетолог / Продюсер и т.д.) доступны на Standard/VIP.${NC}"
+    echo -e "   ${DIM}Для апгрейда напиши в саппорт-чат курса.${NC}"
     echo ""
   fi
 
