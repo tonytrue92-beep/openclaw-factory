@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.04.18"
+INSTALLER_VERSION="2026.05.16"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -460,6 +460,25 @@ acquire_course_token_for_install() {
     echo -e "   ${BOLD}${WHITE}Вставь course-token (попытка ${attempts}/3):${NC}"
     local token
     read -r token
+    # ─── Wave 17: санитизация ввода ──────────────────────────────
+    # Триггер: реальный кейс клиента (Надежда Sagitova, 15.05.2026).
+    # Валидный VIP-токен отклонялся с кодом 5 из-за copy-paste артефактов.
+    # Санитизация в единой точке = покрывает все источники токена.
+    # ────────────────────────────────────────────────────────────
+
+    local original_token="$token"
+    token=$(printf '%s' "$token" | tr -d '[:space:]')
+    token="${token//—/-}"   # U+2014 EM DASH (длинное тире)
+    token="${token//–/-}"   # U+2013 EN DASH (среднее тире)
+    token="${token//‐/-}"   # U+2010 HYPHEN (юникод-дефис)
+    token="${token//‑/-}"   # U+2011 NON-BREAKING HYPHEN (неразрывный)
+    token="${token//\"/}"   # обрамляющие кавычки "TOKEN"
+    token="${token//\'/}"   # обрамляющие одинарные кавычки 'TOKEN'
+
+    if [[ "$token" != "$original_token" ]]; then
+      echo "ℹ️  Очистил токен от лишних символов (пробелы / юникод-тире / кавычки)."
+    fi
+
     [[ -z "$token" ]] && { warn "Пустой ввод."; continue; }
     if course_validate_and_set "$token" "$machine_tg_id"; then
       course_token_save_cache "$COURSE_TOKEN"
