@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.05.17"
+INSTALLER_VERSION="2026.05.17b"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -293,6 +293,18 @@ course_token_expected_tg() {
   return 1
 }
 
+course_token_normalize() {
+  local token="$1"
+  token=$(printf '%s' "$token" | tr -d '[:space:]')
+  token="${token//—/-}"   # U+2014 EM DASH (длинное тире)
+  token="${token//–/-}"   # U+2013 EN DASH (среднее тире)
+  token="${token//‐/-}"   # U+2010 HYPHEN (юникод-дефис)
+  token="${token//‑/-}"   # U+2011 NON-BREAKING HYPHEN (неразрывный)
+  token="${token//\"/}"   # обрамляющие кавычки "TOKEN"
+  token="${token//\'/}"   # обрамляющие одинарные кавычки 'TOKEN'
+  printf '%s' "$token"
+}
+
 course_token_load_cache() {
   if [[ -f "$COURSE_TOKEN_CACHE" ]]; then
     local perms
@@ -466,15 +478,24 @@ acquire_course_token_for_install() {
   local machine_tg_id="$2"
 
   if [[ -n "$preset_token" ]]; then
+    local original_preset_token="$preset_token"
+    preset_token=$(course_token_normalize "$preset_token")
+    if [[ "$preset_token" != "$original_preset_token" ]]; then
+      echo "ℹ️  Очистил токен из команды от лишних символов (пробелы / юникод-тире / кавычки)."
+    fi
     if course_validate_and_set "$preset_token" "$machine_tg_id"; then
       course_token_save_cache "$COURSE_TOKEN"
       return 0
     fi
+    warn "Токен из команды не прошёл проверку. Старый кэш не использую, чтобы не смешивать причины ошибки."
+    echo -e "   ${DIM}Скопируй готовую команду из @AITeamVIPBot ещё раз. Токен должен быть полным, от VIP- до конца подписи.${NC}"
+    return 1
   fi
 
   local cached
   cached=$(course_token_load_cache || true)
   if [[ -n "$cached" ]]; then
+    cached=$(course_token_normalize "$cached")
     if course_validate_and_set "$cached" "$machine_tg_id"; then
       echo -e "   ${GREEN}✓${NC} Использую кэшированный course-token (${COURSE_TIER}-тариф)"
       return 0
@@ -505,13 +526,7 @@ acquire_course_token_for_install() {
     # ────────────────────────────────────────────────────────────
 
     local original_token="$token"
-    token=$(printf '%s' "$token" | tr -d '[:space:]')
-    token="${token//—/-}"   # U+2014 EM DASH (длинное тире)
-    token="${token//–/-}"   # U+2013 EN DASH (среднее тире)
-    token="${token//‐/-}"   # U+2010 HYPHEN (юникод-дефис)
-    token="${token//‑/-}"   # U+2011 NON-BREAKING HYPHEN (неразрывный)
-    token="${token//\"/}"   # обрамляющие кавычки "TOKEN"
-    token="${token//\'/}"   # обрамляющие одинарные кавычки 'TOKEN'
+    token=$(course_token_normalize "$token")
 
     if [[ "$token" != "$original_token" ]]; then
       echo "ℹ️  Очистил токен от лишних символов (пробелы / юникод-тире / кавычки)."
