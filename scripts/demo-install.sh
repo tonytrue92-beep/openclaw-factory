@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.05.16"
+INSTALLER_VERSION="2026.05.17"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -30,6 +30,8 @@ if [[ "$INSTALLER_COMMIT" == "__COMMIT_PLACEHOLDER__" ]]; then
   fi
   unset _script_dir _commit
 fi
+
+COURSE_TOKEN="${COURSE_TOKEN:-}"
 
 # Быстрая обработка «просмотровых» флагов — до любой работы с TTY,
 # чтобы `--version` / `--help` работали и в non-interactive окружении
@@ -49,17 +51,34 @@ for arg in "$@"; do
       echo "  --install         Skip demo, go straight to real installation"
       echo "  --dry-run         Simulate the full installation (nothing is installed)"
       echo "  --vps, --headless VPS mode (Linux server, no GUI, SSH-tunnel for dashboard)"
-      echo "  --course-token T  Course-token from @AITeamVIPBot (SUB-..., STD-... or VIP-...)"
+      echo "  --course-token TOKEN VIP/STD/SUB token from @AITeamVIPBot (skip R0 prompt)"
+      echo "  --vip-token TOKEN    Alias for --course-token (VIP wording for clients)"
       echo "  --diagnose-only   Check existing OpenClaw install without changing anything"
       echo "  --collect-debug   Collect debug bundle for support (non-interactive)"
       echo "  --version         Print installer version and exit"
       echo "  --help            Show this help"
+      echo ""
+      echo "Environment variables:"
+      echo "  COURSE_TOKEN      Same as --course-token (для CI/non-interactive)"
       echo ""
       echo "Without flags: starts with interactive demo, then offers real install"
       exit 0
       ;;
   esac
 done
+
+_args=("$@")
+for ((i = 0; i < ${#_args[@]}; i++)); do
+  case "${_args[$i]}" in
+    --course-token|--vip-token)
+      if [[ -z "${_args[$((i + 1))]:-}" ]]; then
+        echo "ERROR: ${_args[$i]} требует значение" >&2
+        exit 1
+      fi
+      ;;
+  esac
+done
+unset _args
 
 # Проверяем заранее: если запрошен `--collect-debug`, то TTY нам не нужен
 # (функция только пишет файлы, ничего не спрашивает). Это даст возможность
@@ -72,9 +91,7 @@ done
 
 # Поддержка curl | bash — читаем ввод с терминала, а не из pipe
 if [[ "$NEEDS_TTY" == true && ! -t 0 ]]; then
-  if [[ -e /dev/tty ]]; then
-    exec < /dev/tty
-  else
+  if ! { [[ -e /dev/tty ]] && { exec < /dev/tty; } 2>/dev/null; }; then
     echo "ERROR: This script requires an interactive terminal."
     echo "Run it directly: bash <(curl -fsSL URL)"
     exit 1
@@ -89,7 +106,7 @@ DRY_RUN=false
 COLLECT_DEBUG_ONLY=false  # флаг для --collect-debug; сам вызов ниже, после определения функций
 DIAGNOSE_ONLY=false       # флаг для --diagnose-only; сам вызов там же
 VPS_MODE=false            # флаг для --vps; меняет поведение R1/R6 (skip macOS checks, no GUI)
-COURSE_TOKEN_PRESET="${COURSE_TOKEN:-}"  # env или --course-token / --vip-token
+COURSE_TOKEN="${COURSE_TOKEN:-}"  # env или --course-token / --vip-token
 
 # Остальные флаги (меняющие состояние) — после TTY-инициализации
 while [[ $# -gt 0 ]]; do
@@ -100,12 +117,33 @@ while [[ $# -gt 0 ]]; do
     --version|-V|--help|-h) : ;;  # уже обработано выше
     --collect-debug) COLLECT_DEBUG_ONLY=true ;;
     --diagnose-only) DIAGNOSE_ONLY=true ;;
-    --course-token|--vip-token)
-      shift
-      COURSE_TOKEN_PRESET="${1:-}"
+    --course-token)
+      COURSE_TOKEN="${2:-}"
+      if [[ -z "$COURSE_TOKEN" ]]; then
+        echo "ERROR: --course-token требует значение" >&2
+        exit 1
+      fi
+      shift 2
+      continue
       ;;
-    --course-token=*|--vip-token=*)
-      COURSE_TOKEN_PRESET="${arg#*=}"
+    --course-token=*)
+      COURSE_TOKEN="${1#*=}"
+      shift
+      continue
+      ;;
+    --vip-token)
+      COURSE_TOKEN="${2:-}"
+      if [[ -z "$COURSE_TOKEN" ]]; then
+        echo "ERROR: --vip-token требует значение" >&2
+        exit 1
+      fi
+      shift 2
+      continue
+      ;;
+    --vip-token=*)
+      COURSE_TOKEN="${1#*=}"
+      shift
+      continue
       ;;
     --vps|--headless)
       # VPS-режим: бот поднимается на удалённом Linux-сервере,
@@ -228,7 +266,7 @@ divider() {
 # движок без оплаты курса. С тем же public key, что и agents-pack.
 COURSE_TOKEN_CACHE="$HOME/.openclaw/course-token"
 COURSE_TIER=""
-COURSE_TOKEN=""
+COURSE_TOKEN="${COURSE_TOKEN:-}"
 
 COURSE_PUBLIC_KEY_PEM=$(cat <<'EOF'
 -----BEGIN PUBLIC KEY-----
@@ -445,7 +483,7 @@ acquire_course_token_for_install() {
     course_token_clear_cache
   fi
 
-  explain "Для установки OpenClaw нужен course-token." \
+  explain "Для установки OpenClaw нужен токен из @AITeamVIPBot." \
     "Получи его в Telegram-боте курса:" \
     "  ${BOLD}@AITeamVIPBot${NC} → /start → email/phone оплаты" \
     "" \
@@ -457,7 +495,7 @@ acquire_course_token_for_install() {
   local attempts=0
   while [[ $attempts -lt 3 ]]; do
     attempts=$((attempts + 1))
-    echo -e "   ${BOLD}${WHITE}Вставь course-token (попытка ${attempts}/3):${NC}"
+    echo -e "   ${BOLD}${WHITE}Вставь VIP/STD/SUB токен (попытка ${attempts}/3):${NC}"
     local token
     read -r token
     # ─── Wave 17: санитизация ввода ──────────────────────────────
@@ -508,8 +546,8 @@ require_course_token_before_real_install() {
     echo -e "   ${GREEN}✓${NC} Ваш Telegram ID из текущей настройки OpenClaw: ${BOLD}${machine_tg_id}${NC}"
   fi
 
-  if ! acquire_course_token_for_install "$COURSE_TOKEN_PRESET" "$machine_tg_id"; then
-    warn "Course-token не получен. Установка прервана."
+  if ! acquire_course_token_for_install "$COURSE_TOKEN" "$machine_tg_id"; then
+    warn "Токен из @AITeamVIPBot не получен. Установка прервана."
     echo -e "   ${DIM}Получи токен: ${BOLD}@AITeamVIPBot${NC}${DIM} → /start → email/phone оплаты.${NC}"
     exit 1
   fi
@@ -2934,7 +2972,7 @@ else
   explain "Отлично! Сейчас мы установим OpenClaw по-настоящему." \
     "" \
     "Вот что произойдёт:" \
-    "  1. Проверим course-token из @AITeamVIPBot" \
+    "  1. Проверим VIP/STD/SUB токен из @AITeamVIPBot" \
     "  2. Проверим, что Node.js и npm на месте" \
     "  3. Установим OpenClaw (если ещё не установлен)" \
     "  4. Запустим onboard — интерактивную настройку" \
