@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 # Regression test for token validation on fresh macOS machines without Node.js.
 # R0 course-token verification needs Ed25519 crypto. macOS LibreSSL cannot do
 # the fallback, so the installer must bootstrap/prompt for Node before trying
@@ -11,21 +12,28 @@ cd "$(dirname "$0")/.."
 FUNCS="${TMPDIR:-/tmp}/openclaw-factory-funcs.$$"
 trap 'rm -f "$FUNCS"' EXIT
 
-python3 - <<'PY' > "$FUNCS"
-from pathlib import Path
-text = Path('scripts/demo-install.sh').read_text()
-start = text.index('typewrite() {')
-end = text.index('# ═══════════════════════════════════════════════════════════════\n#  НАЧАЛЬНОЕ МЕНЮ')
-print(text[start:end])
-PY
+awk '
+  /^typewrite\(\) \{/ { capture=1 }
+  /^#  НАЧАЛЬНОЕ МЕНЮ/ { exit }
+  capture { print }
+' scripts/demo-install.sh > "$FUNCS"
 
+# Stubs consumed by sourced helper functions; shellcheck cannot see those dynamic reads.
+# shellcheck disable=SC2034
 RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; MAGENTA=''
+# shellcheck disable=SC2034
 WHITE=''; BOLD=''; DIM=''; ITALIC=''; NC=''
+# shellcheck disable=SC2034
 INSTALLER_VERSION='test'
+# shellcheck disable=SC2034
 INSTALLER_COMMIT='test'
+# shellcheck disable=SC2034
 DRY_RUN=false
+# shellcheck disable=SC2034
 VPS_MODE=false
+# shellcheck disable=SC2034
 COLLECT_DEBUG_ONLY=false
+# shellcheck disable=SC2034
 DIAGNOSE_ONLY=false
 warn() { echo "WARN: $1"; }
 ok() { echo "OK: $1"; }
