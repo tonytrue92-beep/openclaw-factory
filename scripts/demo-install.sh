@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.05.17b"
+INSTALLER_VERSION="2026.05.18"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -339,11 +339,54 @@ with open(out, 'wb') as fh:
 PY_B64
 }
 
+course_token_node_crypto_available() {
+  command -v node >/dev/null 2>&1 || return 1
+  COURSE_PUBLIC_KEY_PEM="$COURSE_PUBLIC_KEY_PEM" node - <<'JS_NODE_CHECK' >/dev/null 2>&1
+const crypto = require('crypto');
+try {
+  crypto.createPublicKey(process.env.COURSE_PUBLIC_KEY_PEM || '');
+  Buffer.from('AA', 'base64url');
+  process.exit(0);
+} catch {
+  process.exit(1);
+}
+JS_NODE_CHECK
+}
+
+course_token_openssl_ed25519_available() {
+  command -v openssl >/dev/null 2>&1 || return 1
+  openssl pkeyutl -help 2>&1 | grep -q -- '-rawin'
+}
+
+course_token_crypto_runtime_available() {
+  course_token_node_crypto_available || course_token_openssl_ed25519_available
+}
+
+ensure_course_token_crypto_runtime() {
+  course_token_crypto_runtime_available && return 0
+  [[ "$DRY_RUN" == true ]] && return 0
+
+  echo ""
+  explain "Для проверки подписи course-token нужен Node.js." \
+    "На свежем macOS Node.js часто ещё не установлен, а системный LibreSSL" \
+    "не умеет Ed25519-проверку, поэтому валидный токен падал с кодом 5." \
+    "Сейчас сначала поставим Node.js, потом проверим токен."
+
+  prompt_install_node
+
+  if course_token_crypto_runtime_available; then
+    return 0
+  fi
+
+  warn "Node.js не подготовлен, course-token проверить невозможно. Установи Node.js и запусти команду снова."
+  exit 1
+}
+
 course_verify_ed25519_signature() {
   local payload="$1"
   local sig_part="$2"
 
-  if command -v node >/dev/null 2>&1; then
+  if course_token_node_crypto_available; then
     if COURSE_PUBLIC_KEY_PEM="$COURSE_PUBLIC_KEY_PEM" COURSE_PAYLOAD="$payload" COURSE_SIG_B64="$sig_part" node - <<'JS_VERIFY' >/dev/null 2>&1
 const crypto = require('crypto');
 try {
@@ -560,6 +603,8 @@ require_course_token_before_real_install() {
   else
     echo -e "   ${GREEN}✓${NC} Ваш Telegram ID из текущей настройки OpenClaw: ${BOLD}${machine_tg_id}${NC}"
   fi
+
+  ensure_course_token_crypto_runtime
 
   if ! acquire_course_token_for_install "$COURSE_TOKEN" "$machine_tg_id"; then
     warn "Токен из @AITeamVIPBot не получен. Установка прервана."

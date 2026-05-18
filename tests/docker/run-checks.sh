@@ -48,6 +48,14 @@ bash .github/workflows/smoke-test.sh > /tmp/smoke.log 2>&1 || {
 }
 pass "CI smoke-test.sh passed"
 
+# 5.5. Course-token runtime bootstrap regression test
+bash tests/course-token-runtime-test.sh > /tmp/course-token-runtime.log 2>&1 || {
+  echo "--- course-token-runtime-test.sh log ---"
+  cat /tmp/course-token-runtime.log
+  fail "course-token runtime regression test failed"
+}
+pass "course-token runtime regression test passed"
+
 # 6. security-audit
 bash .github/workflows/security-audit.sh > /tmp/sec.log 2>&1 || {
   echo "--- security-audit.sh log ---"
