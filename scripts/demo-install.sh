@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.05.24"
+INSTALLER_VERSION="2026.05.25"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -51,8 +51,8 @@ for arg in "$@"; do
       echo "  --install         Skip demo, go straight to real installation"
       echo "  --dry-run         Simulate the full installation (nothing is installed)"
       echo "  --vps, --headless VPS mode (Linux server, no GUI, SSH-tunnel for dashboard)"
-      echo "  --course-token TOKEN VIP/STD/SUB token from @AITeamVIPBot (skip R0 prompt)"
-      echo "  --vip-token TOKEN    Alias for --course-token (VIP wording for clients)"
+      echo "  --course-token TOKEN Base/Pro/OpenClaw token from @AITeamVIPBot (skip R0 prompt)"
+      echo "  --vip-token TOKEN    Legacy alias for --course-token"
       echo "  --diagnose-only   Check existing OpenClaw install without changing anything"
       echo "  --collect-debug   Collect debug bundle for support (non-interactive)"
       echo "  --version         Print installer version and exit"
@@ -529,7 +529,7 @@ acquire_course_token_for_install() {
       return 0
     fi
     warn "Токен из команды не прошёл проверку. Старый кэш не использую, чтобы не смешивать причины ошибки."
-    echo -e "   ${DIM}Скопируй готовую команду из @AITeamVIPBot ещё раз. Токен должен быть полным, от VIP- до конца подписи.${NC}"
+    echo -e "   ${DIM}Скопируй готовую команду из @AITeamVIPBot ещё раз. Токен должен быть полным — от префикса SUB-/STD-/VIP- до конца подписи.${NC}"
     return 1
   fi
 
@@ -551,7 +551,7 @@ acquire_course_token_for_install() {
   local attempts=0
   while [[ $attempts -lt 3 ]]; do
     attempts=$((attempts + 1))
-    echo -e "   ${BOLD}${WHITE}Вставь VIP/STD/SUB токен (попытка ${attempts}/3):${NC}"
+    echo -e "   ${BOLD}${WHITE}Вставь токен Base/Pro/OpenClaw (попытка ${attempts}/3):${NC}"
     local token
     read -r token
     # ─── Wave 17: санитизация ввода ──────────────────────────────
@@ -3696,11 +3696,11 @@ else
     divider
     echo -e "   ${BOLD}${GREEN}✓ Установка завершена!${NC}"
     echo ""
-    echo -e "   ${BOLD}${WHITE}Твой тариф: SUB (подписка)${NC}"
+    echo -e "   ${BOLD}${WHITE}Твой тариф: OpenClaw (подписка)${NC}"
     echo -e "   ${GREEN}✓${NC} OpenClaw движок"
     echo -e "   ${GREEN}✓${NC} main-агент в Telegram"
     echo ""
-    echo -e "   ${DIM}Дополнительные агенты (Технарь / Маркетолог / Продюсер и т.д.) доступны на Standard/VIP.${NC}"
+    echo -e "   ${DIM}Дополнительные агенты (Технарь / Маркетолог / Продюсер и т.д.) доступны на Base/Pro.${NC}"
     echo -e "   ${DIM}Для апгрейда напиши в саппорт-чат курса.${NC}"
     echo ""
   fi
