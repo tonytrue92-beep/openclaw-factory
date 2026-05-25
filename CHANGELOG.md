@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-05-25 — Wave 20 (public tier rebrand)
+
+### Changed
+- Публичные названия тарифов в `scripts/demo-install.sh` приведены к
+  новой линейке: `STD` → **Base**, `VIP` → **Pro**, `SUB` →
+  **OpenClaw**. Внутренние `COURSE_TIER`/payload-префиксы
+  `SUB`/`STD`/`VIP` не менялись, чтобы старые токены продолжали работать.
+- Help и финальный экран SUB-установки больше не показывают старый
+  нейминг клиенту.
+
+---
+
 ## 2026-04-18 — Wave 4 (VPS deployment)
 
 ### Added
