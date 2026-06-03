@@ -61,8 +61,10 @@ echo ""
 # Проверяем, что после записи API_KEY/BOT_TOKEN в файл есть `unset` где-то
 # в ближайших 30 строках.
 echo "─── Check 3: API_KEY/BOT_TOKEN are unset after use ───"
-# Для API_KEY
-api_line=$(grep -n '"key": "$API_KEY"' "$INSTALLER" | head -1 | cut -d: -f1)
+# Для API_KEY (|| true — grep может не найти, если установщик больше не
+# использует API_KEY, напр. перешёл на OAuth-логин: тогда под set -euo
+# pipefail присваивание не должно ронять аудит — просто пропускаем под-чек)
+api_line=$(grep -n '"key": "$API_KEY"' "$INSTALLER" | head -1 | cut -d: -f1 || true)
 if [[ -n "$api_line" ]]; then
   slice=$(sed -n "${api_line},$((api_line + 30))p" "$INSTALLER")
   if echo "$slice" | grep -qE '^\s*unset\s+API_KEY\b'; then
@@ -72,8 +74,8 @@ if [[ -n "$api_line" ]]; then
   fi
 fi
 
-# Для BOT_TOKEN
-bot_line=$(grep -n 'openclaw channels add.*BOT_TOKEN' "$INSTALLER" | head -1 | cut -d: -f1)
+# Для BOT_TOKEN (|| true — та же защита от set -e при отсутствии совпадения)
+bot_line=$(grep -n 'openclaw channels add.*BOT_TOKEN' "$INSTALLER" | head -1 | cut -d: -f1 || true)
 if [[ -n "$bot_line" ]]; then
   slice=$(sed -n "${bot_line},$((bot_line + 20))p" "$INSTALLER")
   if echo "$slice" | grep -qE '^\s*unset\s+BOT_TOKEN\b'; then
