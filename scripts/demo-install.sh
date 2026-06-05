@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.03.1"
+INSTALLER_VERSION="2026.06.04"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -1381,7 +1381,7 @@ show_vps_guide() {
   echo -e "   ${DIM}│${NC}   ${GREEN}${BOLD}demo-install.sh) --vps --install${NC}"
   echo -e "   ${DIM}└──────────────────────────────────────────────────────────────────┘${NC}"
   echo ""
-  echo -e "   ${DIM}Дальше установщик попросит войти в ChatGPT, токен Telegram-бота и ваш Telegram ID.${NC}"
+  echo -e "   ${DIM}Дальше установщик попросит ключ opencode.ai, токен Telegram-бота и ваш Telegram ID.${NC}"
   echo -e "   ${DIM}Через 3–5 минут бот будет отвечать в Telegram.${NC}"
   echo ""
 }
@@ -2121,22 +2121,23 @@ pause
 
 step_header "3" "FIRST RUN — ONBOARDING"
 
-explain "При первом запуске подключаем «мозги» — вход в ChatGPT Codex." \
-  "Нужен аккаунт ChatGPT (бесплатный подойдёт; ChatGPT Plus за \$20/мес — умнее)." \
-  "Вход происходит на сайте OpenAI — пароль мы не видим."
+explain "При первом запуске нужен ключ opencode.ai." \
+  "Откройте https://opencode.ai, создайте API key и вставьте его в установщик." \
+  "По умолчанию ставим бесплатную модель MiniMax — карта не нужна."
 
 divider
 
-echo -e "   ${WHITE}? Войдите в ChatGPT (откроется ссылка или код)${NC}"
-echo -e "   ${DIM}  ▸ откройте ссылку в браузере и подтвердите вход${NC}"
+echo -e "   ${WHITE}? Paste your opencode.ai API key${NC}"
+echo -e "   ${DIM}  ▸ sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx${NC}"
 echo ""
-ru "Появится ссылка (или короткий код) — откройте её и войдите в ChatGPT."
-ru "После входа модель подключится сама — ничего вставлять не нужно."
+ru "Вы вставляете ключ (Ctrl+V или Cmd+V) и нажимаете Enter."
+ru "Ключ начинается с 'sk-'."
 ru ""
-ru "Если аккаунта ещё нет — создайте бесплатно на https://chatgpt.com"
-ru "Бесплатного достаточно; подписка ChatGPT Plus (\$20) делает агента умнее."
+ru "ВАЖНО: символы ключа НЕ отображаются при вводе (как пароль в терминале)."
+ru "Это нормально! Просто вставьте и нажмите Enter."
 ru ""
-ru "БЕЗОПАСНОСТЬ: вход — на сайте OpenAI. Мы не видим и не храним ваш пароль."
+ru "БЕЗОПАСНОСТЬ: никому не показывайте API-ключ. Он привязан к вашему"
+ru "аккаунту opencode.ai. Если утёк — сбросьте его в дашборде."
 
 divider
 
@@ -2973,22 +2974,22 @@ step_header "R3" "ONBOARDING — НАСТРОЙКА"
 
 if [[ "$DRY_RUN" == true ]]; then
   explain "Настраиваем OpenClaw." \
-    "Нужно будет войти в свой аккаунт ChatGPT — это и есть «мозги» агента."
+    "Нужно будет вставить только API-ключ opencode.ai."
 
   sleep 0.5
-  echo -e "   ${WHITE}? Войдите в ChatGPT (откроется ссылка или код)${NC}"
-  echo -e "   ${DIM}  ▸ открываете ссылку в браузере, входите — и всё${NC}"
+  echo -e "   ${WHITE}? Paste your opencode.ai API key${NC}"
+  echo -e "   ${DIM}  ▸ sk-••••••••••••••••••••••••••••••••${NC}"
   sleep 0.5
   echo ""
-  terminal "✓ Вход в ChatGPT Codex выполнен"
-  terminal "✓ Default model: openai-codex/gpt-5.5-codex"
+  terminal "✓ API key saved"
+  terminal "✓ Default model: opencode/minimax-m2.5-free"
   terminal "✓ Config created: ~/.openclaw/openclaw.json"
   terminal "✓ Gateway service installed"
   terminal "✓ Gateway started on port 18789"
   terminal "✓ Dashboard: http://127.0.0.1:18789"
   echo ""
-  ru "Скрипт подключил ChatGPT Codex (модель GPT-5.5) и запустил gateway."
-  ru "В реальной установке вам нужно только войти в ChatGPT — ключи вставлять не надо."
+  ru "Скрипт записал ключ, поставил модель Minimax 2.5 (free) и запустил gateway."
+  ru "В реальной установке вам нужно будет вставить только один ключ."
 
   ok "Onboarding complete (симуляция)"
 else
@@ -3078,76 +3079,94 @@ else
   # Если выбран ввод нового ключа ИЛИ полный сброс ИЛИ первая установка —
   # запускаем блок opencode-ключа
   if [[ ! -f "$HOME/.openclaw/openclaw.json" || "${NEED_KEY_INPUT:-false}" == true ]]; then
-    explain "Подключаем «мозги» агенту — модель, на которой он думает." \
-      "Используем OpenAI ChatGPT Codex (GPT-5.4/5.5) — самые умные модели."
+    explain "Настраиваем OpenClaw." \
+      "Нужно будет вставить только API-ключ opencode.ai."
 
     divider
 
-    # ---- Провайдер модели: вход через аккаунт ChatGPT (OAuth) ----
-    # Раньше тут просили API-ключ opencode.ai. Теперь — штатный вход
-    # провайдера openai-codex: клиент логинится своим аккаунтом ChatGPT,
-    # а `--set-default` сам ставит рекомендованную Codex-модель.
-    # OAuth-креды у OpenClaw ГЛОБАЛЬНЫЕ — их автоматически видят все агенты
-    # (проверено: не-дефолтные агенты видят openai-codex без своего профиля),
-    # поэтому второй установщик (агенты) ничего отдельно копировать не должен.
-    PROVIDER="openai-codex"
-    MODEL=""   # заполним после входа тем, что поставит --set-default
+    # ---- Провайдер и модель ----
+    PROVIDER="opencode"
+    MODEL="opencode/minimax-m2.5-free"
+    KEY_URL="https://opencode.ai"
 
-    explain "Что нужно от вас — аккаунт ChatGPT:" \
-      "  • Бесплатный аккаунт ChatGPT — уже подойдёт." \
-      "  • Подписка ChatGPT Plus (\$20/мес) — агент будет умнее и быстрее (рекомендуем)." \
-      "" \
-      "Нет аккаунта? Заранее создайте бесплатно на https://chatgpt.com"
+    explain "Откройте opencode.ai и создайте API-ключ." \
+      "По умолчанию используем MiniMax Free — бесплатно, карта не нужна." \
+      "Если позже выберете платные модели, понадобится иностранная карта." \
+      "Виртуальная карта за 5 минут: https://t.me/WantToPayBot?start=w17851188--GUSNM"
+
+    # Автоматически открываем браузер
+    if command -v open >/dev/null 2>&1; then
+      open "$KEY_URL" &>/dev/null &
+      echo -e "   ${DIM}✓ Открыл opencode.ai в браузере${NC}"
+    elif command -v xdg-open >/dev/null 2>&1; then
+      xdg-open "$KEY_URL" &>/dev/null &
+      echo -e "   ${DIM}✓ Открыл opencode.ai в браузере${NC}"
+    fi
+
+    echo ""
+    explain "Ключ — это пароль от AI-аккаунта. Никому его не показывайте."
 
     divider
 
-    explain "Сейчас запустится вход в ChatGPT." \
-      "ВАЖНО: ссылку (или код) для входа покажет САМ установщик — строкой ниже." \
-      "Именно её откройте в браузере и войдите (это страница входа OpenAI)." \
-      "Ваш пароль мы не видим. После входа всё подключится само —" \
-      "ничего вставлять и копировать не нужно."
+    # ---- Ввод API-ключа (скрытый) ----
+    while true; do
+      echo -e "   ${BOLD}${WHITE}Вставьте API-ключ opencode.ai и нажмите Enter:${NC}"
+      echo -e "   ${DIM}(при вводе ничего отображаться не будет — это нормально)${NC}"
+      read -rs API_KEY
+      echo ""
 
-    # Браузер сами НЕ открываем: настоящую ссылку/код показывает сам
-    # `openclaw models auth login` ниже. Если открыть тут свою вкладку
-    # (напр. chatgpt.com), клиент путается — какая ссылка «та самая».
-
-    # Штатный вход провайдера. Нужен интерактивный TTY (он есть при обычной
-    # установке в Терминале). На VPS используем device-code (вход по коду с
-    # любого устройства). --set-default ставит рекомендованную Codex-модель.
-    _login_ok=false
-    for _try in 1 2; do
-      if [[ "$VPS_MODE" == true ]]; then
-        openclaw models auth login --provider openai-codex --device-code --set-default && _login_ok=true
-      else
-        openclaw models auth login --provider openai-codex --set-default && _login_ok=true
+      if [[ -z "$API_KEY" ]]; then
+        warn "Ключ пустой. Попробуйте ещё раз или Ctrl+C для выхода."
+        continue
       fi
-      [[ "$_login_ok" == true ]] && break
-      warn "Вход не завершился. Пробуем ещё раз (или Ctrl+C для выхода)."
+
+      if [[ ! "$API_KEY" =~ ^sk- ]]; then
+        warn "Ключ opencode.ai обычно начинается с 'sk-'. Проверьте, что скопировали правильный."
+        echo -e "   ${DIM}Продолжить всё равно? [y/n]${NC}"
+        read -r force_key
+        [[ "$force_key" != "y" && "$force_key" != "Y" ]] && continue
+      fi
+
+      break
     done
 
-    if [[ "$_login_ok" != true ]]; then
-      err "Не удалось войти в ChatGPT Codex."
-      echo -e "   ${DIM}Проверьте аккаунт ChatGPT и запустите установку снова.${NC}"
-      echo -e "   ${DIM}Вручную: openclaw models auth login --provider openai-codex --set-default${NC}"
-      exit 1
-    fi
+    echo -e "   ${GREEN}✓ Ключ получен (${#API_KEY} символов)${NC}"
+    echo ""
 
-    # Проверяем, что профиль появился
-    if openclaw models auth list 2>&1 | grep -qi 'openai-codex'; then
-      echo -e "   ${GREEN}✓${NC} ChatGPT Codex подключён — мозги на месте"
-    else
-      warn "Профиль openai-codex не виден. Если агент молчит — повторите:"
-      echo -e "   ${DIM}openclaw models auth login --provider openai-codex --set-default${NC}"
-    fi
+    # ---- Создаём auth-profiles.json для main-агента ----
+    explain "Создаю конфигурацию OpenClaw..."
 
-    # Узнаём, какую модель поставил --set-default (для согласованности агентов)
-    MODEL=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
-    if [[ -z "$MODEL" ]]; then
-      # Запасной вариант, если --set-default не записал модель
-      MODEL="openai-codex/gpt-5.5-codex"
-      openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null || true
+    AUTH_DIR="$HOME/.openclaw/agents/main/agent"
+    mkdir -p "$AUTH_DIR"
+    AUTH_FILE="$AUTH_DIR/auth-profiles.json"
+
+    cat > "$AUTH_FILE" <<AUTHEOF
+{
+  "version": 1,
+  "profiles": {
+    "opencode:default": {
+      "type": "api_key",
+      "provider": "opencode",
+      "key": "$API_KEY"
+    }
+  },
+  "lastGood": {
+    "opencode": "opencode:default"
+  }
+}
+AUTHEOF
+    chmod 600 "$AUTH_FILE"
+    echo -e "   ${GREEN}✓${NC} API-ключ сохранён"
+
+    # Забываем ключ из переменной окружения. До этого момента он был нужен
+    # только для записи в auth-profiles.json; держать его в памяти процесса
+    # дальше — лишний риск (debug-bundle может попробовать выкачать env).
+    unset API_KEY
+
+    # Устанавливаем модель по умолчанию (|| true — чтобы не убить скрипт)
+    if openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null; then
+      echo -e "   ${GREEN}✓${NC} Модель по умолчанию: ${MODEL}"
     fi
-    echo -e "   ${GREEN}✓${NC} Модель по умолчанию: ${MODEL}"
 
     # КРИТИЧНО: ставим gateway.mode=local ДО gateway install/start
     # (иначе gateway поднимется в непонятном режиме и закроется с 1006)
