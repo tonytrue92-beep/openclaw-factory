@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.04"
+INSTALLER_VERSION="2026.06.04.1"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -3757,7 +3757,19 @@ else
     echo ""
   fi
 
-  echo -e "   ${BOLD}${WHITE}Если что-то пошло не так:${NC}"
+  # nvm-PATH: openclaw поставлен под nvm. В ТЕКУЩЕЙ сессии его ещё нет в
+  # PATH (nvm подхватится только в новом терминале или после source).
+  # Гарантируем запись nvm в rc (идемпотентно) + чётко подсказываем клиенту,
+  # иначе он видит «openclaw: command not found» и думает, что не установилось.
+  [[ -d "$HOME/.nvm" ]] && persist_nvm_in_shell_rc >/dev/null 2>&1
+  echo -e "   ${BOLD}${YELLOW}⚠ Важно: команда «openclaw» работает в НОВОМ окне терминала.${NC}"
+  echo -e "   ${DIM}   Если в этом окне пишет «command not found» — открой новый терминал,${NC}"
+  echo -e "   ${DIM}   либо выполни прямо здесь одну из строк (по своей оболочке):${NC}"
+  echo -e "      ${GREEN}source ~/.zshrc${NC}          ${DIM}# если zsh${NC}"
+  echo -e "      ${GREEN}source ~/.bash_profile${NC}   ${DIM}# если bash${NC}"
+  echo ""
+
+  echo -e "   ${BOLD}${WHITE}Если что-то пошло не так (в новом терминале):${NC}"
   show_cmd "openclaw status --all        # Проверить всё"
   show_cmd "openclaw doctor --fix        # Починить проблемы"
   show_cmd "openclaw logs --follow       # Смотреть логи"
