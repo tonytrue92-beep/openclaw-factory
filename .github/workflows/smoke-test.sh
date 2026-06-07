@@ -117,3 +117,20 @@ BODY
 
 # 3. Run it
 bash "$SMOKE"
+
+# ─── Static checks: объединённый установщик (Phase A) ───
+echo ""
+echo "=== Static checks (unified installer) ==="
+grep -q 'ENGINE_ONLY=false' "$INSTALLER" \
+  || { echo "✗ FAIL: нет дефолта ENGINE_ONLY=false"; exit 1; }
+grep -qE '^[[:space:]]*--engine-only\)' "$INSTALLER" \
+  || { echo "✗ FAIL: нет кейса --engine-only"; exit 1; }
+grep -q 'ENGINE_ONLY=true' "$INSTALLER" \
+  || { echo "✗ FAIL: --engine-only не ставит ENGINE_ONLY=true"; exit 1; }
+grep -q 'install-agents-bundled.sh' "$INSTALLER" \
+  || { echo "✗ FAIL: нет чейна на install-agents-bundled.sh"; exit 1; }
+grep -Fq '"${COURSE_TIER:-}" == "STD" || "${COURSE_TIER:-}" == "VIP"' "$INSTALLER" \
+  || { echo "✗ FAIL: чейн не обусловлен STD/VIP"; exit 1; }
+grep -q 'ENGINE_ONLY:-false' "$INSTALLER" \
+  || { echo "✗ FAIL: чейн не уважает --engine-only"; exit 1; }
+echo "✓ PASS: unified installer (--engine-only + чейн STD/VIP) на месте"
