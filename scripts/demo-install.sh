@@ -3715,11 +3715,14 @@ else
     echo ""
 
     AGENTS_BUNDLED_URL="https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh"
-    _agents_fallback="bash <(curl -fsSL ${AGENTS_BUNDLED_URL}) --course-token ${COURSE_TOKEN}"
+    # Токен НЕ передаём в командной строке (не светим в ps / scrollback):
+    # factory уже сохранил его в ~/.openclaw/course-token (umask 077), а
+    # agents-pack сам читает этот кэш через acquire_course_token.
+    _agents_fallback="bash <(curl -fsSL ${AGENTS_BUNDLED_URL})"
     _chain_ok=false
     _agents_tmp="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-$$.sh")"
     if curl -fsSL "$AGENTS_BUNDLED_URL" -o "$_agents_tmp" 2>/dev/null && [[ -s "$_agents_tmp" ]]; then
-      if bash "$_agents_tmp" --course-token "$COURSE_TOKEN"; then
+      if bash "$_agents_tmp"; then
         _chain_ok=true
       fi
     fi
