@@ -1,114 +1,81 @@
-# OpenClaw Factory — Token Gateway
+# Install analytics Worker (Cloudflare + D1)
 
-Cloudflare Worker для проверки токенов курса перед установкой OpenClaw.
+Считает **кто и сколько ставил** установщики AI TEAM + связывает установку с
+**email** (привязан к токену при оплате). Склейка по `sha256(токена)`.
 
-## Архитектура
+## Как это работает
 
 ```
-Клиент запускает install.sh
-        │
-        ▼
-Скрипт просит токен курса (например: OC-A7K2-MQNX-R4PZ)
-        │
-        ▼
-POST https://auth.openclaw.ai/verify  ──► Cloudflare Worker
-        │                                        │
-        │                                        ▼
-        │                                 KV: OPENCLAW_TOKENS
-        │                                 ищет по токену
-        │                                        │
-        │  {ok:true, user:"Григорий"} ◄──────────┘
-        │
-        ▼
-Установка идёт дальше
+  БОТ @AITeamVIPBot ── POST /issue ──→┐ {token_hash, tg_id, email, tier}
+  (при выдаче токена)                 │
+                                      ├─ D1 (таблица installs, ключ token_hash)
+  УСТАНОВЩИК ──────── POST /activation┘ {token_hash, tg_id, installer_version, client_os, track}
+  (при установке)
+                                      ↓
+  АНТОН ──────────── GET /stats ──────→ email + tg_id + тариф + версия + ОС + когда + счётчик
 ```
 
-## Что внутри
+- Установщик **не знает email** — он приходит только от бота через `/issue`.
+- Храним **хэш** токена, не сырой токен.
+- `/activation` обновляет только уже `/issue`-нутые строки → мусором не засорить.
 
-| Файл | Назначение |
-|------|-----------|
-| `worker.js` | Код Worker (verify + admin/issue + admin/revoke) |
-| `wrangler.toml` | Конфиг для деплоя через wrangler |
-| `installer-integration.md` | Как встроить проверку в demo-install.sh |
-| `README.md` | Этот файл |
+## Эндпоинты
 
-## Быстрый деплой
+| Метод / путь | Кто | Заголовок | Тело |
+|---|---|---|---|
+| `POST /issue` | бот | `X-Admin-Key: <ADMIN_SECRET>` | `{token_hash, tg_id, email, tier}` |
+| `POST /activation` | установщик | — | `{token_hash, tg_id, installer_version, client_os, track}` |
+| `GET /stats` | Антон | `X-Admin-Key: <ADMIN_SECRET>` | — (`?format=csv` для выгрузки) |
+| `GET /health` | — | — | — |
+
+## Деплой (нужен аккаунт Cloudflare)
 
 ```bash
-# 1. Поставить wrangler
+cd cloudflare
 npm install -g wrangler
-
-# 2. Залогиниться в Cloudflare
 wrangler login
 
-# 3. Создать KV namespace для хранения токенов
-wrangler kv:namespace create OPENCLAW_TOKENS
-# → получишь id, вставить в wrangler.toml
+# 1. База D1
+wrangler d1 create aiteam-installs
+#    → скопировать выданный database_id в wrangler.toml ([[d1_databases]].database_id)
+wrangler d1 execute aiteam-installs --remote --file=schema.sql
 
-# 4. Задать секрет для админки
+# 2. Секрет (длинная случайная строка — её же дать боту для /issue и себе для /stats)
 wrangler secret put ADMIN_SECRET
-# → ввести длинную случайную строку (минимум 32 символа)
 
-# 5. Задеплоить
+# 3. Деплой
 wrangler deploy
+#    → получишь URL: https://aiteam-installs.<аккаунт>.workers.dev
 ```
 
-После деплоя Worker доступен по адресу типа:
-`https://openclaw-factory-auth.<аккаунт>.workers.dev`
+## После деплоя
+1. Дать **URL Worker** разработчику установщиков → подставить в
+   `VIP_ACTIVATION_ENDPOINT` (agents-pack) и `ACTIVATION_ENDPOINT` (factory/trial),
+   путь `/activation`.
+2. Дать **URL + ADMIN_SECRET** технарю для бота (см.
+   `openclaw-agents-pack/handoff/install-analytics-bot-brief.md`).
 
-## Выпуск первого токена
-
+## Проверка
 ```bash
-export ADMIN_SECRET="тот-секрет-что-ввёл-на-шаге-4"
-export WORKER_URL="https://openclaw-factory-auth.<аккаунт>.workers.dev"
+W=https://aiteam-installs.<аккаунт>.workers.dev
+curl -s $W/health
+curl -s -X POST $W/issue -H "X-Admin-Key: <ADMIN_SECRET>" -H 'Content-Type: application/json' \
+  -d '{"token_hash":"test1","tg_id":"1","email":"a@b.com","tier":"VIP"}'
+curl -s -X POST $W/activation -H 'Content-Type: application/json' \
+  -d '{"token_hash":"test1","tg_id":"1","installer_version":"2026.06.06","client_os":"darwin-arm64","track":"paid"}'
+curl -s "$W/stats?format=csv" -H "X-Admin-Key: <ADMIN_SECRET>"
+```
+Ожидаемо: в CSV строка с `a@b.com,1,VIP,paid,...,1`.
 
-curl -X POST "$WORKER_URL/admin/issue" \
-  -H "X-Admin-Key: $ADMIN_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user": "Тестовый Ученик",
-    "email": "test@example.com",
-    "maxActivations": 3,
-    "expiresAt": "2027-04-16T00:00:00Z"
-  }'
+## Локальный тест (без деплоя)
+```bash
+cd cloudflare
+wrangler d1 execute aiteam-installs --local --file=schema.sql
+echo 'ADMIN_SECRET=testkey' > .dev.vars
+wrangler dev --local --persist     # http://127.0.0.1:8787
+# затем те же curl, но на localhost:8787 и X-Admin-Key: testkey
 ```
 
-Ответ:
-```json
-{
-  "ok": true,
-  "token": "OC-A7K2-MQNX-R4PZ",
-  "record": {
-    "user": "Тестовый Ученик",
-    "maxActivations": 3,
-    "activations": 0,
-    ...
-  }
-}
-```
-
-Токен `OC-A7K2-MQNX-R4PZ` отдаёшь ученику.
-
-## Стоимость
-
-| Что | Лимит Free | Твой объём |
-|-----|-----------|------------|
-| Worker requests | 100 000 / день | ~100 активаций/день = 0.1% |
-| KV reads | 100 000 / день | ~3 read на активацию = минимум |
-| KV writes | 1 000 / день | ~3 write на активацию |
-| KV storage | 1 GB | 1 токен ≈ 200 байт → 5M токенов в лимит |
-
-При твоих объёмах (сотни учеников в год) **бесплатно навсегда**.
-
-## Что если Worker упадёт
-
-Cloudflare SLA — 99.9%+ аптайм. Но даже если упадёт:
-- Старые ученики (с сохранённым токеном в `~/.openclaw/.course-token`) смогут переустанавливать свою версию OpenClaw через `openclaw` CLI без участия Worker
-- Новые ученики получат понятную ошибку «сеть недоступна» и смогут повторить через 5 минут
-
-## Безопасность
-
-- `ADMIN_SECRET` хранится только на стороне Cloudflare, **не в git**
-- Токены ученикам — не предсказуемы (рандом из 32-буквенного алфавита без похожих символов)
-- Формат `OC-XXXX-XXXX-XXXX` — легко диктовать по телефону
-- Rate limit на `/verify` — делается отдельно через Cloudflare Dashboard (если пойдёт брут)
+> Прежняя версия Worker (KV, проверка `OC-`токенов) заменена на аналитику D1.
+> Серверный токен-гейтинг (`/verify` с лимитом активаций) — отдельная будущая
+> возможность; сейчас токены проверяются локально (Ed25519) в установщиках.
