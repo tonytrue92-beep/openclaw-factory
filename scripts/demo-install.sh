@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.04.1"
+INSTALLER_VERSION="2026.06.06"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -106,6 +106,7 @@ DRY_RUN=false
 COLLECT_DEBUG_ONLY=false  # флаг для --collect-debug; сам вызов ниже, после определения функций
 DIAGNOSE_ONLY=false       # флаг для --diagnose-only; сам вызов там же
 VPS_MODE=false            # флаг для --vps; меняет поведение R1/R6 (skip macOS checks, no GUI)
+ENGINE_ONLY=false         # --engine-only: не дотягивать агентов (отладка/SUB/переустановка движка)
 COURSE_TOKEN="${COURSE_TOKEN:-}"  # env или --course-token / --vip-token
 
 # Остальные флаги (меняющие состояние) — после TTY-инициализации
@@ -152,6 +153,9 @@ while [[ $# -gt 0 ]]; do
       # Подразумевает --install (на VPS нет смысла в демо/меню).
       VPS_MODE=true
       SKIP_DEMO=true
+      ;;
+    --engine-only)
+      ENGINE_ONLY=true
       ;;
   esac
   shift || true
@@ -3690,6 +3694,46 @@ else
       echo -e "      ${DIM}Если бот просит оплату — верните бесплатную модель через openclaw-switch-model.${NC}"
     fi
     echo ""
+  fi
+
+  # ─── Объединённый платный поток: STD/VIP — сразу ставим AI-команду ───
+  # Тариф из токена решает: SUB → только движок (блок ниже);
+  # STD/VIP → докачиваем agents-pack и ставим агентов В ТОЙ ЖЕ сессии
+  # (nvm уже загружен в процесс → у дочернего скрипта openclaw в PATH,
+  # «command not found» между шагами физически невозможен).
+  if [[ "${ENGINE_ONLY:-false}" != true \
+        && ( "${COURSE_TIER:-}" == "STD" || "${COURSE_TIER:-}" == "VIP" ) ]]; then
+
+    # nvm в rc заранее — если докачка сорвётся, openclaw всё равно доступен потом
+    [[ -d "$HOME/.nvm" ]] && persist_nvm_in_shell_rc >/dev/null 2>&1
+
+    _tier_label="Base (3 агента)"
+    [[ "${COURSE_TIER}" == "VIP" ]] && _tier_label="Pro (8 агентов + база знаний)"
+    divider
+    echo -e "   ${BOLD}${GREEN}✓ Движок и main-агент готовы.${NC}"
+    echo -e "   ${BOLD}${WHITE}Тариф ${_tier_label}: ставлю твою AI-команду — это та же установка, НЕ закрывай терминал.${NC}"
+    echo ""
+
+    AGENTS_BUNDLED_URL="https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh"
+    _agents_fallback="bash <(curl -fsSL ${AGENTS_BUNDLED_URL}) --course-token ${COURSE_TOKEN}"
+    _chain_ok=false
+    _agents_tmp="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-$$.sh")"
+    if curl -fsSL "$AGENTS_BUNDLED_URL" -o "$_agents_tmp" 2>/dev/null && [[ -s "$_agents_tmp" ]]; then
+      if bash "$_agents_tmp" --course-token "$COURSE_TOKEN"; then
+        _chain_ok=true
+      fi
+    fi
+    rm -f "$_agents_tmp" 2>/dev/null || true
+
+    if [[ "$_chain_ok" != true ]]; then
+      echo ""
+      warn "Движок установлен и работает, но автоустановку агентов не удалось завершить."
+      echo -e "   ${DIM}Доустанови команду агентов вручную (в новом терминале):${NC}"
+      echo -e "      ${GREEN}${_agents_fallback}${NC}"
+      echo ""
+    fi
+    unset _tier_label _agents_fallback _chain_ok _agents_tmp AGENTS_BUNDLED_URL
+    break   # агенты поставлены (или показан fallback) — их финал последний, выходим
   fi
 
   if [[ "${COURSE_TIER:-}" == "SUB" ]]; then
