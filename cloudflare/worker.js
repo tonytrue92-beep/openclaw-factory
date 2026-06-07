@@ -1,163 +1,120 @@
-// ═══════════════════════════════════════════════════════════════════════
-//  OpenClaw Factory — Token verification Worker
+// ═══════════════════════════════════════════════════════════════
+//  OpenClaw — Install analytics Worker (D1)
 //
-//  Назначение:
-//    - Принимает POST /verify с токеном
-//    - Проверяет в KV namespace OPENCLAW_TOKENS
-//    - Отдаёт 200 + имя ученика, если токен валидный
-//    - Трекает активацию (чтобы видеть, кто и когда устанавливал)
+//  Назначение: видеть КТО и СКОЛЬКО ставил + email + тариф + версия + ОС.
+//  Склейка по sha256(токена): бот шлёт /issue (с email), установщик /activation.
 //
-//  Деплой:
-//    wrangler deploy
-// ═══════════════════════════════════════════════════════════════════════
-
+//  Эндпоинты:
+//    POST /issue       — бот (X-Admin-Key): {token_hash, tg_id, email, tier}
+//    POST /activation  — установщик (без ключа): {token_hash, tg_id, installer_version, client_os, track}
+//    GET  /stats       — Антон (X-Admin-Key): сводка (?format=csv)
+//    GET  /health      — проверка
+//
+//  Деплой: см. cloudflare/README.md
+// ═══════════════════════════════════════════════════════════════
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
-
-    // CORS для локальных тестов
-    const corsHeaders = {
+    const cors = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-Admin-Key",
     };
+    if (request.method === "OPTIONS") return new Response(null, { headers: cors });
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+    if (url.pathname === "/health") {
+      return json({ ok: true, service: "aiteam-installs" }, 200, cors);
     }
 
-    // ─── Проверка токена ──────────────────────────────────────────────
-    if (url.pathname === "/verify" && request.method === "POST") {
-      const body = await request.json().catch(() => ({}));
-      const token = (body.token || "").trim();
-
-      if (!token) {
-        return json({ ok: false, error: "empty_token" }, 400, corsHeaders);
+    // ── /issue — бот регистрирует токен с email (admin) ──
+    if (url.pathname === "/issue" && request.method === "POST") {
+      if (request.headers.get("X-Admin-Key") !== env.ADMIN_SECRET) {
+        return json({ ok: false, error: "forbidden" }, 403, cors);
       }
-
-      // Токены в KV: key = токен, value = JSON { user, email, activations, maxActivations, expiresAt, revoked }
-      const raw = await env.OPENCLAW_TOKENS.get(token);
-
-      if (!raw) {
-        return json({ ok: false, error: "invalid_token" }, 403, corsHeaders);
-      }
-
-      const record = JSON.parse(raw);
-
-      // Отозван ли?
-      if (record.revoked) {
-        return json({ ok: false, error: "revoked" }, 403, corsHeaders);
-      }
-
-      // Истёк ли?
-      if (record.expiresAt && new Date(record.expiresAt) < new Date()) {
-        return json({ ok: false, error: "expired" }, 403, corsHeaders);
-      }
-
-      // Лимит активаций?
-      const activations = record.activations || 0;
-      const max = record.maxActivations || 3; // по умолчанию 3 активации (основной комп + запасной + переустановка)
-
-      if (activations >= max) {
-        return json(
-          { ok: false, error: "limit_reached", activations, max },
-          403,
-          corsHeaders
-        );
-      }
-
-      // Обновляем счётчик активаций
-      record.activations = activations + 1;
-      record.lastActivatedAt = new Date().toISOString();
-      record.lastActivationIP = request.headers.get("cf-connecting-ip") || "unknown";
-
-      await env.OPENCLAW_TOKENS.put(token, JSON.stringify(record));
-
-      return json(
-        {
-          ok: true,
-          user: record.user || "студент",
-          activations: record.activations,
-          max,
-          message: `Добро пожаловать, ${record.user || "студент"}! Активация ${record.activations}/${max}.`,
-        },
-        200,
-        corsHeaders
-      );
+      const b = await request.json().catch(() => ({}));
+      const th = (b.token_hash || "").trim();
+      if (!th) return json({ ok: false, error: "no_token_hash" }, 400, cors);
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `INSERT INTO installs (token_hash, tg_id, email, tier, issued_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(token_hash) DO UPDATE SET
+           tg_id=COALESCE(excluded.tg_id, installs.tg_id),
+           email=COALESCE(excluded.email, installs.email),
+           tier=COALESCE(excluded.tier, installs.tier),
+           issued_at=COALESCE(installs.issued_at, excluded.issued_at)`
+      ).bind(th, b.tg_id || null, b.email || null, b.tier || null, now).run();
+      return json({ ok: true }, 200, cors);
     }
 
-    // ─── Админка: выпустить токен (защищено секретом) ────────────────
-    if (url.pathname === "/admin/issue" && request.method === "POST") {
-      const adminKey = request.headers.get("X-Admin-Key");
-      if (adminKey !== env.ADMIN_SECRET) {
-        return json({ ok: false, error: "forbidden" }, 403, corsHeaders);
+    // ── /activation — установщик отмечает активацию (без ключа) ──
+    //    Обновляем ТОЛЬКО уже issue-нутую строку → мусор/неизвестные хэши игнор.
+    if (url.pathname === "/activation" && request.method === "POST") {
+      const b = await request.json().catch(() => ({}));
+      const th = (b.token_hash || "").trim();
+      if (!th) return json({ ok: false, error: "no_token_hash" }, 400, cors);
+      const now = new Date().toISOString();
+      await env.DB.prepare(
+        `UPDATE installs SET
+           activated_at = COALESCE(activated_at, ?2),
+           last_activated_at = ?2,
+           activation_count = activation_count + 1,
+           installer_version = ?3,
+           client_os = ?4,
+           track = COALESCE(?5, track),
+           tg_id = COALESCE(tg_id, ?6)
+         WHERE token_hash = ?1`
+      ).bind(th, now, b.installer_version || null, b.client_os || null, b.track || null, b.tg_id || null).run();
+      return json({ ok: true }, 200, cors); // fire-and-forget: всегда ok
+    }
+
+    // ── /stats — сводка (admin) ──
+    if (url.pathname === "/stats" && request.method === "GET") {
+      if (request.headers.get("X-Admin-Key") !== env.ADMIN_SECRET) {
+        return json({ ok: false, error: "forbidden" }, 403, cors);
       }
-
-      const body = await request.json().catch(() => ({}));
-      const token = body.token || generateToken();
-      const record = {
-        user: body.user || "student",
-        email: body.email || null,
-        activations: 0,
-        maxActivations: body.maxActivations || 3,
-        expiresAt: body.expiresAt || null,
-        revoked: false,
-        issuedAt: new Date().toISOString(),
-      };
-
-      await env.OPENCLAW_TOKENS.put(token, JSON.stringify(record));
-
-      return json({ ok: true, token, record }, 200, corsHeaders);
-    }
-
-    // ─── Админка: отозвать токен ─────────────────────────────────────
-    if (url.pathname === "/admin/revoke" && request.method === "POST") {
-      const adminKey = request.headers.get("X-Admin-Key");
-      if (adminKey !== env.ADMIN_SECRET) {
-        return json({ ok: false, error: "forbidden" }, 403, corsHeaders);
+      const rows = (await env.DB.prepare(
+        `SELECT token_hash, tg_id, email, tier, track, issued_at, activated_at,
+                last_activated_at, activation_count, installer_version, client_os
+         FROM installs ORDER BY COALESCE(activated_at, issued_at) DESC`
+      ).all()).results || [];
+      const issued = rows.length;
+      const activated = rows.filter(r => r.activated_at).length;
+      const byTier = {};
+      for (const r of rows) {
+        const t = r.tier || "?";
+        byTier[t] = byTier[t] || { issued: 0, activated: 0 };
+        byTier[t].issued++;
+        if (r.activated_at) byTier[t].activated++;
       }
-
-      const body = await request.json().catch(() => ({}));
-      const raw = await env.OPENCLAW_TOKENS.get(body.token);
-      if (!raw) return json({ ok: false, error: "not_found" }, 404, corsHeaders);
-
-      const record = JSON.parse(raw);
-      record.revoked = true;
-      record.revokedAt = new Date().toISOString();
-      await env.OPENCLAW_TOKENS.put(body.token, JSON.stringify(record));
-
-      return json({ ok: true }, 200, corsHeaders);
+      if (url.searchParams.get("format") === "csv") {
+        const head = "email,tg_id,tier,track,issued_at,activated_at,activation_count,installer_version,client_os";
+        const lines = rows.map(r => [
+          r.email, r.tg_id, r.tier, r.track, r.issued_at, r.activated_at,
+          r.activation_count, r.installer_version, r.client_os,
+        ].map(v => `"${(v ?? "").toString().replace(/"/g, '""')}"`).join(","));
+        return new Response([head, ...lines].join("\n"), {
+          status: 200,
+          headers: { "Content-Type": "text/csv; charset=utf-8", ...cors },
+        });
+      }
+      return json({
+        ok: true,
+        issued,
+        activated,
+        funnel: { issued, activated, rate: issued ? +(activated / issued).toFixed(3) : 0 },
+        byTier,
+        rows,
+      }, 200, cors);
     }
 
-    // ─── Корень: health check ────────────────────────────────────────
-    if (url.pathname === "/" || url.pathname === "/health") {
-      return json({ ok: true, service: "openclaw-factory-auth" }, 200, corsHeaders);
-    }
-
-    return json({ ok: false, error: "not_found" }, 404, corsHeaders);
+    return json({ ok: false, error: "not_found" }, 404, cors);
   },
 };
 
 function json(data, status, headers = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      "Content-Type": "application/json",
-      ...headers,
-    },
+    headers: { "Content-Type": "application/json", ...headers },
   });
-}
-
-function generateToken() {
-  // Формат: OC-XXXX-XXXX-XXXX (12 символов, легко диктовать)
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // убрали I, O, 0, 1 (путаются)
-  const groups = [];
-  for (let g = 0; g < 3; g++) {
-    let s = "";
-    for (let i = 0; i < 4; i++) {
-      s += chars[Math.floor(Math.random() * chars.length)];
-    }
-    groups.push(s);
-  }
-  return "OC-" + groups.join("-");
 }
