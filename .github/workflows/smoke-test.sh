@@ -134,3 +134,12 @@ grep -Fq '"${COURSE_TIER:-}" == "STD" || "${COURSE_TIER:-}" == "VIP"' "$INSTALLE
 grep -q 'ENGINE_ONLY:-false' "$INSTALLER" \
   || { echo "✗ FAIL: чейн не уважает --engine-only"; exit 1; }
 echo "✓ PASS: unified installer (--engine-only + чейн STD/VIP) на месте"
+
+# ─── Static checks: устойчивая дотяжка агентов (обход 504) ───
+grep -q '_fetch_agents_installer()' "$INSTALLER" \
+  || { echo "✗ FAIL: нет хелпера _fetch_agents_installer"; exit 1; }
+grep -q 'releases/download/' "$INSTALLER" \
+  || { echo "✗ FAIL: нет фоллбэка на прямой тег (releases/download/)"; exit 1; }
+grep -q 'git clone --depth 1' "$INSTALLER" \
+  || { echo "✗ FAIL: нет git-clone фоллбэка"; exit 1; }
+echo "✓ PASS: устойчивая дотяжка агентов (latest → тег → git clone)"
