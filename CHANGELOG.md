@@ -8,6 +8,21 @@
 
 ---
 
+## 2026-06-06.3 — Фикс: `openclaw-add-codex` меняет модель у ВСЕХ агентов
+
+### Fixed
+- Реальный кейс (клиент): после подключения Codex бот «отвечал на minimax» /
+  молчал, пока вручную не сменить модель. Причина — `models set`/`--set-default`
+  меняли только `agents.defaults.model.primary`, а у каждого агента в
+  `agents.list[]` оставался свой override (minimax с установки).
+- Шаг 4 хелпера теперь зовёт `openclaw-switch-model` (или эквивалентный inline-
+  fallback): меняет модель у **default + каждого агента**, чистит сессии,
+  рестартит gateway. Бот сразу отвечает на ChatGPT-модели.
+
+`INSTALLER_VERSION 2026.06.06.2 → 2026.06.06.3`
+
+---
+
 ## 2026-06-06.2 — Хелпер `openclaw-add-codex` (умные мозги ChatGPT одной командой)
 
 ### Added
