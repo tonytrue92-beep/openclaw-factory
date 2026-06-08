@@ -8,6 +8,27 @@
 
 ---
 
+## 2026-06-06.2 — Хелпер `openclaw-add-codex` (умные мозги ChatGPT одной командой)
+
+### Added
+- Хелпер **`openclaw-add-codex`** (ставится в `~/.openclaw/bin/`): опционально
+  подключает ChatGPT/Codex одной командой — ставит Codex-плагин
+  (`clawhub:@openclaw/codex` → npm fallback), enable + registry refresh,
+  рестарт gateway, вход `models auth login --provider openai` (для 2026.6.x;
+  `openai-codex` — legacy), модель `openai/gpt-5.5`. Opt-in, обязательный поток
+  установки не трогает — при неудаче бесплатная модель остаётся рабочей.
+- Флаги хелпера: `--device-code` (VPS/без браузера), `--provider <id>` (override),
+  позиционный аргумент = модель.
+
+### Почему так
+Реальный кейс (клиент, OpenClaw 2026.6.1): `--provider openai-codex` падал
+(«No provider plugins found»). На 2026.6.x вход в ChatGPT — через provider
+`openai`; `openai-codex` стал legacy-именем. Codex — отдельный runtime-плагин.
+
+`INSTALLER_VERSION 2026.06.06.1 → 2026.06.06.2`
+
+---
+
 ## 2026-06-06.1 — Устойчивая дотяжка агентов (обход 504 GitHub)
 
 ### Fixed
