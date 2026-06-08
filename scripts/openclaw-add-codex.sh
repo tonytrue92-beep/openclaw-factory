@@ -88,14 +88,29 @@ else
   exit 0   # опциональный апгрейд — не падаем, мягко выходим
 fi
 
-# ── 4. Модель по умолчанию + рестарт ──
-step "4/4 Ставлю модель ${MODEL}"
-if ! openclaw models set "$MODEL" >/dev/null 2>&1; then
-  openclaw config set agents.defaults.model.primary "$MODEL" >/dev/null 2>&1 \
-    || warn "Не смог выставить модель автоматически — задай вручную: openclaw-switch-model ${MODEL}"
+# ── 4. Модель у ВСЕХ агентов + чистка сессий + рестарт ──
+# ВАЖНО: только default НЕ хватает — у каждого агента в agents.list[] свой
+# override (стоит minimax с момента установки), и бот продолжает на minimax,
+# пока модель не сменить у самих агентов. openclaw-switch-model делает это
+# (default + каждый agents.list[i].model + чистка сессий + рестарт).
+step "4/4 Ставлю ${MODEL} у ВСЕХ агентов (не только дефолт)"
+_SWITCH="$(command -v openclaw-switch-model || echo "$HOME/.openclaw/bin/openclaw-switch-model")"
+if [[ -x "$_SWITCH" ]]; then
+  "$_SWITCH" "$MODEL" || warn "Не удалось переключить модель — вручную: openclaw-switch-model ${MODEL}"
+else
+  # Fallback: дефолт + каждый агент + чистка сессий + рестарт (как switch-model)
+  openclaw config set agents.defaults.model.primary "$MODEL" >/dev/null 2>&1 || true
+  _agents_raw="$(openclaw config get agents.list 2>/dev/null || echo "")"
+  _n="$(printf '%s' "$_agents_raw" | grep -cE '"id"[[:space:]]*:' 2>/dev/null || echo 0)"
+  if [[ "$_n" -gt 0 ]]; then
+    for i in $(seq 0 $((_n - 1))); do
+      openclaw config set "agents.list[${i}].model" "\"${MODEL}\"" --strict-json >/dev/null 2>&1 || true
+    done
+  fi
+  openclaw sessions cleanup --all-agents >/dev/null 2>&1 || true
+  openclaw gateway restart >/dev/null 2>&1 || true
 fi
-openclaw gateway restart >/dev/null 2>&1 || true
-ok "Модель по умолчанию: ${MODEL}"
+ok "Модель у всех агентов: ${MODEL}"
 
 echo ""
 echo -e "${BOLD}${GREEN}Готово.${NC} Напиши боту в Telegram — он теперь на ChatGPT (${MODEL})."
