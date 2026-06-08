@@ -37,7 +37,9 @@ DEVICE_CODE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --device-code) DEVICE_CODE="--device-code"; shift ;;
-    --provider) PROVIDER="${2:-openai}"; shift 2 ;;
+    --provider)
+      [[ $# -ge 2 ]] || die "--provider требует значение (например: --provider openai)"
+      PROVIDER="$2"; shift 2 ;;
     --provider=*) PROVIDER="${1#*=}"; shift ;;
     --help|-h)
       sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -45,6 +47,8 @@ while [[ $# -gt 0 ]]; do
     *) MODEL="$1"; shift ;;   # позиционный аргумент = модель
   esac
 done
+[[ -n "$PROVIDER" ]] || die "--provider не может быть пустым"
+[[ -n "$MODEL" ]] || die "модель не может быть пустой"
 
 command -v openclaw >/dev/null 2>&1 || die "openclaw не найден в PATH. Открой новый терминал (или: source ~/.zshrc) и повтори."
 
@@ -70,16 +74,18 @@ ok "gateway перезапущен"
 
 # ── 3. Вход в ChatGPT ──
 step "3/4 Вход в ChatGPT (provider: ${PROVIDER})"
+warn "После входа ChatGPT станет моделью по умолчанию для ВСЕХ агентов (шаг 4)."
 info "Сейчас откроется ссылка/код для входа — залогинься своим ChatGPT."
-if openclaw models auth login --provider "$PROVIDER" $DEVICE_CODE --set-default; then
+# Намеренно БЕЗ --set-default: модель ставим явно на шаге 4 (прозрачно).
+if openclaw models auth login --provider "$PROVIDER" $DEVICE_CODE; then
   ok "Вход выполнен"
 else
   echo ""
-  warn "Вход не завершился. Попробуй вручную одну из команд:"
+  warn "Вход не завершился — модель НЕ меняю, бесплатная остаётся рабочей."
+  echo -e "${DIM}   Можно повторить позже или вручную:${NC}"
   echo -e "   ${GREEN}openclaw models auth login --provider openai --device-code${NC}   ${DIM}# вход по коду${NC}"
-  echo -e "   ${GREEN}openclaw models auth login --provider codex --set-default${NC}     ${DIM}# если провайдер называется codex${NC}"
-  echo -e "${DIM}   (бесплатная модель при этом продолжает работать)${NC}"
-  exit 1
+  echo -e "   ${GREEN}openclaw models auth login --provider codex${NC}                  ${DIM}# если провайдер называется codex${NC}"
+  exit 0   # опциональный апгрейд — не падаем, мягко выходим
 fi
 
 # ── 4. Модель по умолчанию + рестарт ──
