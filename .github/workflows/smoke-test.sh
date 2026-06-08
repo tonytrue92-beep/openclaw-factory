@@ -143,3 +143,14 @@ grep -q 'releases/download/' "$INSTALLER" \
 grep -q 'git clone --depth 1' "$INSTALLER" \
   || { echo "✗ FAIL: нет git-clone фоллбэка"; exit 1; }
 echo "✓ PASS: устойчивая дотяжка агентов (latest → тег → git clone)"
+
+# ─── Static checks: хелпер openclaw-add-codex ───
+[[ -f scripts/openclaw-add-codex.sh ]] \
+  || { echo "✗ FAIL: нет scripts/openclaw-add-codex.sh"; exit 1; }
+bash -n scripts/openclaw-add-codex.sh \
+  || { echo "✗ FAIL: синтаксис openclaw-add-codex.sh"; exit 1; }
+grep -q 'models auth login --provider "$PROVIDER"' scripts/openclaw-add-codex.sh \
+  || { echo "✗ FAIL: add-codex не логинит через provider"; exit 1; }
+grep -q 'openclaw-add-codex.sh' "$INSTALLER" \
+  || { echo "✗ FAIL: установщик не ставит openclaw-add-codex"; exit 1; }
+echo "✓ PASS: хелпер openclaw-add-codex (ChatGPT мозги) на месте + ставится"

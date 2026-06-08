@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.06.1"
+INSTALLER_VERSION="2026.06.06.2"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -3553,6 +3553,16 @@ if curl -fsSL "${HELPERS_BASE}/openclaw-factory-reauth.sh" -o "$REAUTH_PATH" 2>/
   echo -e "   ${GREEN}✓${NC} Установлен: ${REAUTH_PATH}"
 else
   echo -e "   ${YELLOW}○${NC} Не смог скачать reauth helper — пропускаю (не критично)"
+fi
+
+# 3. add-codex — умные мозги через ChatGPT (Codex) одной командой (опционально)
+ADDCODEX_PATH="$HELPER_DIR/openclaw-add-codex"
+if curl -fsSL "${HELPERS_BASE}/openclaw-add-codex.sh" -o "$ADDCODEX_PATH" 2>/dev/null; then
+  chmod +x "$ADDCODEX_PATH"
+  echo -e "   ${GREEN}✓${NC} Установлен: ${ADDCODEX_PATH}"
+  echo -e "      ${DIM}умные мозги (ChatGPT): запусти ${BOLD}openclaw-add-codex${NC}${DIM} когда захочешь${NC}"
+else
+  echo -e "   ${YELLOW}○${NC} Не смог скачать add-codex helper — пропускаю (не критично)"
 fi
 
 # Добавляем ~/.openclaw/bin в PATH, если ещё нет
