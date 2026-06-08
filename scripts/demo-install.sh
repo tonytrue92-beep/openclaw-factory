@@ -15,7 +15,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.06"
+INSTALLER_VERSION="2026.06.06.1"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -627,6 +627,43 @@ export NVM_DIR="$HOME/.nvm"
       echo -e "   ${DIM}↳ прописал nvm в ${rc}${NC}"
     fi
   done
+}
+
+# Устойчивое скачивание установщика агентов: releases/latest → прямой тег
+# (через GitHub API, обход 504 на сломанном редиректе /latest/) → git clone.
+# Печатает команду запуска в stdout (для eval), код 0 при успехе; иначе 1.
+_fetch_agents_installer() {
+  local repo="tonytrue92-beep/openclaw-agents-pack"
+  local base="https://github.com/${repo}"
+  local tmp; tmp="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-$$.sh")"
+
+  # 1) обычный путь — releases/latest/download
+  if curl -fsSL --max-time 45 "${base}/releases/latest/download/install-agents-bundled.sh" -o "$tmp" 2>/dev/null \
+       && head -1 "$tmp" 2>/dev/null | grep -q '^#!'; then
+    printf 'bash %q' "$tmp"; return 0
+  fi
+
+  # 2) прямой тег (обход сломанного редиректа /latest/, напр. 504)
+  local tag
+  tag=$(curl -fsSL --max-time 20 "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
+          | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+  if [[ -n "$tag" ]] \
+       && curl -fsSL --max-time 45 "${base}/releases/download/${tag}/install-agents-bundled.sh" -o "$tmp" 2>/dev/null \
+       && head -1 "$tmp" 2>/dev/null | grep -q '^#!'; then
+    printf 'bash %q' "$tmp"; return 0
+  fi
+
+  # 3) git clone (полный репо с lib/) — последний рубеж
+  if command -v git >/dev/null 2>&1; then
+    local cdir; cdir="$(mktemp -d 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-clone-$$")"
+    if git clone --depth 1 "${base}.git" "$cdir" >/dev/null 2>&1 \
+         && [[ -f "$cdir/scripts/install-agents.sh" ]]; then
+      printf 'bash %q' "$cdir/scripts/install-agents.sh"; return 0
+    fi
+  fi
+
+  rm -f "$tmp" 2>/dev/null || true
+  return 1
 }
 
 # Автоустановка Node.js через nvm (без sudo) — используется в реальной установке
@@ -3714,28 +3751,27 @@ else
     echo -e "   ${BOLD}${WHITE}Тариф ${_tier_label}: ставлю твою AI-команду — это та же установка, НЕ закрывай терминал.${NC}"
     echo ""
 
-    AGENTS_BUNDLED_URL="https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh"
     # Токен НЕ передаём в командной строке (не светим в ps / scrollback):
     # factory уже сохранил его в ~/.openclaw/course-token (umask 077), а
     # agents-pack сам читает этот кэш через acquire_course_token.
-    _agents_fallback="bash <(curl -fsSL ${AGENTS_BUNDLED_URL})"
+    # Скачиваем устойчиво: latest → прямой тег (обход 504) → git clone.
     _chain_ok=false
-    _agents_tmp="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-$$.sh")"
-    if curl -fsSL "$AGENTS_BUNDLED_URL" -o "$_agents_tmp" 2>/dev/null && [[ -s "$_agents_tmp" ]]; then
-      if bash "$_agents_tmp"; then
+    if _agents_run=$(_fetch_agents_installer); then
+      if eval "$_agents_run"; then
         _chain_ok=true
       fi
     fi
-    rm -f "$_agents_tmp" 2>/dev/null || true
 
     if [[ "$_chain_ok" != true ]]; then
       echo ""
-      warn "Движок установлен и работает, но автоустановку агентов не удалось завершить."
-      echo -e "   ${DIM}Доустанови команду агентов вручную (в новом терминале):${NC}"
-      echo -e "      ${GREEN}${_agents_fallback}${NC}"
+      warn "Движок установлен и работает, но автоустановку агентов не удалось завершить (GitHub недоступен?)."
+      echo -e "   ${DIM}Доустанови команду агентов вручную (в новом терминале), любым способом:${NC}"
+      echo -e "      ${GREEN}bash <(curl -fsSL https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh)${NC}"
+      echo -e "   ${DIM}   если GitHub отдаёт 504 — через git:${NC}"
+      echo -e "      ${GREEN}git clone https://github.com/tonytrue92-beep/openclaw-agents-pack && bash openclaw-agents-pack/scripts/install-agents.sh${NC}"
       echo ""
     fi
-    unset _tier_label _agents_fallback _chain_ok _agents_tmp AGENTS_BUNDLED_URL
+    unset _tier_label _chain_ok _agents_run
     break   # агенты поставлены (или показан fallback) — их финал последний, выходим
   fi
 
