@@ -8,6 +8,24 @@
 
 ---
 
+## 2026-06-09 — Аудит: харднинг Worker аналитики + чистка
+
+### Fixed (cloudflare/worker.js)
+- **CSV-инъекция** в `/stats?format=csv`: ячейки, начинающиеся с `= + - @`,
+  префиксуются `'` (анти formula-injection).
+- **`track`** теперь заполняется на `/issue` (из тарифа: TRY→trial, иначе paid) —
+  колонка не пустует.
+- ON CONFLICT-семантика задокументирована (last-write-wins; issued_at сохраняем первый).
+
+### Removed
+- `cloudflare/installer-integration.md` — устаревший док про KV/`/verify`,
+  противоречил текущему D1-worker.js. (CORS/timing на admin-эндпоинтах — negligible:
+  нужен `X-Admin-Key`, Worker не публичный; оставлено осознанно.)
+
+`INSTALLER_VERSION 2026.06.06.3 → 2026.06.09` (изменения только в cloudflare/доках)
+
+---
+
 ## 2026-06-06.3 — Фикс: `openclaw-add-codex` меняет модель у ВСЕХ агентов
 
 ### Fixed

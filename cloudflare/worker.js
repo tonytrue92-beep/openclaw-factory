@@ -35,15 +35,19 @@ export default {
       const th = (b.token_hash || "").trim();
       if (!th) return json({ ok: false, error: "no_token_hash" }, 400, cors);
       const now = new Date().toISOString();
+      const track = b.tier === "TRY" ? "trial" : "paid"; // трек из тарифа (низ. колонка не пустует)
+      // ON CONFLICT: last-write-wins для tg_id/email/tier/track (повторный /issue =
+      // коррекция данных), issued_at сохраняем первый.
       await env.DB.prepare(
-        `INSERT INTO installs (token_hash, tg_id, email, tier, issued_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        `INSERT INTO installs (token_hash, tg_id, email, tier, track, issued_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(token_hash) DO UPDATE SET
            tg_id=COALESCE(excluded.tg_id, installs.tg_id),
            email=COALESCE(excluded.email, installs.email),
            tier=COALESCE(excluded.tier, installs.tier),
+           track=COALESCE(excluded.track, installs.track),
            issued_at=COALESCE(installs.issued_at, excluded.issued_at)`
-      ).bind(th, b.tg_id || null, b.email || null, b.tier || null, now).run();
+      ).bind(th, b.tg_id || null, b.email || null, b.tier || null, track, now).run();
       return json({ ok: true }, 200, cors);
     }
 
@@ -92,7 +96,11 @@ export default {
         const lines = rows.map(r => [
           r.email, r.tg_id, r.tier, r.track, r.issued_at, r.activated_at,
           r.activation_count, r.installer_version, r.client_os,
-        ].map(v => `"${(v ?? "").toString().replace(/"/g, '""')}"`).join(","));
+        ].map(v => {
+          let s = (v ?? "").toString();
+          if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; // анти CSV-formula-injection
+          return `"${s.replace(/"/g, '""')}"`;
+        }).join(","));
         return new Response([head, ...lines].join("\n"), {
           status: 200,
           headers: { "Content-Type": "text/csv; charset=utf-8", ...cors },
