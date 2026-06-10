@@ -13,7 +13,6 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'SHA256SUMS'
-      - 'cloudflare/**'
       - 'docs/**'
   pull_request:
     branches: [main]
@@ -22,7 +21,6 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'SHA256SUMS'
-      - 'cloudflare/**'
       - 'docs/**'
 
 permissions:
@@ -55,14 +53,6 @@ jobs:
             --exclude=SC1090,SC1091,SC2155,SC2086,SC2034 \
             scripts/*.sh
 
-      - name: Worker syntax (node --check)
-        run: |
-          # cloudflare/worker.js — единственный JS в репо; ловим синтакс-ошибки
-          if [[ -f cloudflare/worker.js ]]; then
-            cp cloudflare/worker.js /tmp/worker-check.mjs
-            node --check /tmp/worker-check.mjs
-            echo "OK: worker.js синтаксически валиден"
-          fi
 
   syntax:
     name: bash -n (syntax)
