@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-06-10 — Cloudflare убран (решение Антона)
+
+### Removed
+- Каталог `cloudflare/` (Worker аналитики установок + D1-схема). Аналитика
+  переезжает на **сервер технаря** (рядом с Prodamus-webhook) — код Worker
+  сохранён как референс в `openclaw-agents-pack/handoff/analytics-endpoint-reference/`,
+  спека эндпоинтов — в брифе бота. Установщики не затронуты: пинг и так
+  выключен (endpoint задаётся переменной, к Cloudflare не привязан).
+- lint.yml: paths/шаг node-check для worker.js.
+
+---
+
 ## 2026-06-10 — Аудит R2: VPS-чейн, честная диагностика, HRM, TG-префилл
 
 ### Fixed
