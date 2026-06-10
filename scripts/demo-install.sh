@@ -684,6 +684,32 @@ install_node_via_nvm() {
   echo ""
   explain "Ставлю Node.js — это займёт 1-2 минуты."
 
+  # ── Совместимость с npm prefix ──────────────────────────────────
+  # nvm принципиально несовместим с prefix в ~/.npmrc и переменной
+  # NPM_CONFIG_PREFIX: nvm install/use на них умирает, а set -e молча
+  # утаскивает за собой весь скрипт (реальный кейс 2026-06-11:
+  # prefix=~/.npm-global). Но такой prefix означает, что npm -g уже
+  # ставит пакеты в пользовательскую папку без sudo — то есть EACCES,
+  # ради которого мы тащим nvm, этим пользователям не грозит. Если их
+  # Node свежий — оставляем его и не трогаем nvm вообще.
+  if [[ -n "${NPM_CONFIG_PREFIX:-}" ]] || grep -qs '^[[:space:]]*prefix[[:space:]]*=' "$HOME/.npmrc" 2>/dev/null; then
+    local cur_major=0
+    if command -v node &>/dev/null; then
+      cur_major=$(node -v | sed 's/v//' | cut -d. -f1)
+    fi
+    if [[ "$cur_major" -ge 22 ]]; then
+      echo -e "   ${YELLOW}⚠ У вас настроен собственный npm prefix — nvm с ним несовместим.${NC}"
+      echo -e "   ${DIM}Но ваш npm и так ставит глобальные пакеты без sudo, а Node $(node -v) свежий.${NC}"
+      echo -e "   ${GREEN}✓ Оставляю текущий Node.js — продолжаем без nvm${NC}"
+      return 0
+    fi
+    echo ""
+    echo -e "   ${RED}✗ Node.js нужно обновить, но автообновление через nvm невозможно:${NC}"
+    echo -e "   ${DIM}в ~/.npmrc (или NPM_CONFIG_PREFIX) настроен npm prefix, nvm с ним несовместим.${NC}"
+    echo -e "   ${DIM}Обновите Node.js вручную (https://nodejs.org, версия 22+) и запустите скрипт снова.${NC}"
+    exit 1
+  fi
+
   export NVM_DIR="$HOME/.nvm"
 
   if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
@@ -707,17 +733,21 @@ install_node_via_nvm() {
 
   echo ""
   echo -e "   ${DIM}Устанавливаю Node.js 22 LTS...${NC}"
+  # || true: при set -euo pipefail упавший nvm молча убивал весь скрипт —
+  # вместо этого даём дойти до явной проверки версии ниже
   nvm install 22 2>&1 | tail -5 | while IFS= read -r line; do
     echo -e "   ${DIM}${line}${NC}"
-  done
-  nvm use 22 &>/dev/null
+  done || true
+  nvm use 22 &>/dev/null || true
 
   # ВАЖНО: прописываем nvm в shell rc-файлы, иначе после закрытия терминала
   # команда openclaw будет недоступна ("command not found: openclaw")
   persist_nvm_in_shell_rc
 
   echo ""
-  if command -v node &>/dev/null; then
+  # Проверяем именно v22: просто command -v node проходит и со старым
+  # системным Node, даже если nvm выше упал — а нам нужен факт активации
+  if command -v node &>/dev/null && [[ "$(node -v | sed 's/v//' | cut -d. -f1)" -eq 22 ]]; then
     NODE_VER=$(node -v)
     echo -e "   ${GREEN}✓ Node.js ${NODE_VER} установлен${NC}"
     if command -v npm &>/dev/null; then
@@ -725,7 +755,12 @@ install_node_via_nvm() {
     fi
     echo -e "   ${GREEN}✓ Node.js готов для текущего и новых запусков${NC}"
   else
-    echo -e "   ${RED}✗ Установка не удалась. Попробуйте вручную: https://nodejs.org${NC}"
+    echo -e "   ${RED}✗ Не удалось активировать Node.js 22.${NC}"
+    if command -v node &>/dev/null; then
+      echo -e "   ${DIM}Сейчас активен $(node -v). Частая причина — npm prefix в ~/.npmrc,${NC}"
+      echo -e "   ${DIM}nvm с ним несовместим (выше должно быть сообщение от nvm).${NC}"
+    fi
+    echo -e "   ${DIM}Установите Node.js 22 вручную: https://nodejs.org — и запустите скрипт снова.${NC}"
     exit 1
   fi
 }
