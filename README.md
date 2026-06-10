@@ -49,17 +49,22 @@ bash demo-install.sh
 Смотрите этот файл, чтобы узнать, что поменялось в последней версии —
 какие баги починены, какие фичи добавлены, какие breaking changes.
 
-### 🎯 Следующий шаг — команда из трёх агентов
+### 🎯 AI-команда ставится АВТОМАТИЧЕСКИ (объединённый поток)
 
-После того как OpenClaw поставлен и бот отвечает, есть второй установщик:
+При запуске с **STD/VIP-токеном** этот установщик после движка **сам
+дотягивает и ставит агентов** ([openclaw-agents-pack](https://github.com/tonytrue92-beep/openclaw-agents-pack)):
+Base = 3 агента, Pro = до 8 на выбор + база знаний. Отдельная вторая
+команда НЕ нужна.
 
-**[openclaw-agents-pack](https://github.com/tonytrue92-beep/openclaw-agents-pack)** — добавляет трёх предустановленных агентов (Технарь 🔧 / Маркетолог 📈 / Продюсер 🎬), каждого в своём Telegram-боте.
+Ручной запуск agents-pack — для доустановки/обслуживания
+(`--refresh-templates` и т.п.):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-agents-pack/main/scripts/install-agents.sh)
+bash <(curl -fsSL https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh)
 ```
 
-Требует: рабочий OpenClaw (через этот установщик) + три токена ботов от @BotFather.
+Понадобятся токены Telegram-ботов от @BotFather — по одному на агента
+(создавать партиями по 2-3: флуд-лимит Telegram).
 
 ---
 
@@ -94,18 +99,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/tonytrue92-beep/openclaw-age
 **Часть 2 — Реальная установка (6 шагов):**
 - Проверка Node.js и npm
 - Установка / обновление OpenClaw
-- Интерактивная настройка (onboard)
+- Настройка «мозгов»: API-ключ opencode.ai → auth-profiles.json
+  (onboard НЕ используется — известный баг визарда)
 - Ввод токена Telegram-бота (проверка через Telegram API)
 - Создание агента и привязка к боту
-- Финальная диагностика
+- Финальная диагностика (+ при STD/VIP — автоустановка AI-команды)
 
 **Флаги запуска:**
 
 ```bash
-bash demo-install.sh              # Полный путь: демо → выбор → установка
-bash demo-install.sh --install    # Пропустить демо, сразу к установке
-bash demo-install.sh --dry-run    # Пропустить демо, симуляция установки
-bash demo-install.sh --help       # Справка
+bash demo-install.sh                       # Полный путь: демо → выбор → установка
+bash demo-install.sh --install             # Пропустить демо, сразу к установке
+bash demo-install.sh --course-token T...   # Токен сразу (бот шлёт команду в таком виде)
+bash demo-install.sh --vps                 # Linux-сервер: headless, bonjour-off, SSH-tunnel
+bash demo-install.sh --engine-only         # Только движок (не дотягивать агентов)
+bash demo-install.sh --dry-run             # Симуляция установки
+bash demo-install.sh --collect-debug       # Debug-bundle для саппорта
+bash demo-install.sh --help                # Справка
 ```
 
 ---

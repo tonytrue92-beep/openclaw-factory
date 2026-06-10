@@ -35,7 +35,9 @@ export default {
       const th = (b.token_hash || "").trim();
       if (!th) return json({ ok: false, error: "no_token_hash" }, 400, cors);
       const now = new Date().toISOString();
-      const track = b.tier === "TRY" ? "trial" : "paid"; // трек из тарифа (низ. колонка не пустует)
+      // R2-аудит: без tier track = null (COALESCE сохранит прежний) —
+      // иначе /issue без tier молча перетирал trial→paid.
+      const track = b.tier ? (b.tier === "TRY" ? "trial" : "paid") : null;
       // ON CONFLICT: last-write-wins для tg_id/email/tier/track (повторный /issue =
       // коррекция данных), issued_at сохраняем первый.
       await env.DB.prepare(
@@ -66,9 +68,10 @@ export default {
            installer_version = ?3,
            client_os = ?4,
            track = COALESCE(?5, track),
-           tg_id = COALESCE(tg_id, ?6)
+           tg_id = COALESCE(tg_id, ?6),
+           tier = COALESCE(tier, ?7)
          WHERE token_hash = ?1`
-      ).bind(th, now, b.installer_version || null, b.client_os || null, b.track || null, b.tg_id || null).run();
+      ).bind(th, now, b.installer_version || null, b.client_os || null, b.track || null, b.tg_id || null, b.tier || null).run();
       return json({ ok: true }, 200, cors); // fire-and-forget: всегда ok
     }
 
