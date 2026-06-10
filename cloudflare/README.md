@@ -49,9 +49,11 @@ wrangler deploy
 ```
 
 ## После деплоя
-1. Дать **URL Worker** разработчику установщиков → подставить в
-   `VIP_ACTIVATION_ENDPOINT` (agents-pack) и `ACTIVATION_ENDPOINT` (factory/trial),
-   путь `/activation`.
+1. Дать **URL Worker** разработчику установщиков. Сейчас пинг реализован в
+   agents-pack: дефолт `VIP_ACTIVATION_ENDPOINT` **пуст** (no-op) — подставить
+   `https://<worker>/activation` в `scripts/lib/vip.sh` (1 строка) и
+   перевыпустить bundled. Пинги в factory/trial добавляются тем же шагом
+   (задача H5; пока их в коде нет).
 2. Дать **URL + ADMIN_SECRET** технарю для бота (см.
    `openclaw-agents-pack/handoff/install-analytics-bot-brief.md`).
 
@@ -65,14 +67,15 @@ curl -s -X POST $W/activation -H 'Content-Type: application/json' \
   -d '{"token_hash":"test1","tg_id":"1","installer_version":"2026.06.06","client_os":"darwin-arm64","track":"paid"}'
 curl -s "$W/stats?format=csv" -H "X-Admin-Key: <ADMIN_SECRET>"
 ```
-Ожидаемо: в CSV строка с `a@b.com,1,VIP,paid,...,1`.
+Ожидаемо: в CSV строка вида `"a@b.com","1","VIP","paid",...,"1"` (все поля в
+кавычках) — email/tier/track заполнены, activation_count = 1.
 
 ## Локальный тест (без деплоя)
 ```bash
 cd cloudflare
 wrangler d1 execute aiteam-installs --local --file=schema.sql
 echo 'ADMIN_SECRET=testkey' > .dev.vars
-wrangler dev --local --persist     # http://127.0.0.1:8787
+wrangler dev   # локальный режим — дефолт в wrangler 3+; http://127.0.0.1:8787
 # затем те же curl, но на localhost:8787 и X-Admin-Key: testkey
 ```
 

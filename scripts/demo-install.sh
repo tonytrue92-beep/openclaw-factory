@@ -8,14 +8,15 @@ set -euo pipefail
 # ═══════════════════════════════════════════════════════════════
 
 # ─── Версия установщика ─────────────────────────────────────────
-# Обновляется при каждом значимом коммите. INSTALLER_COMMIT подставляется
-# через sed в CI (GitHub Actions); если скрипт запущен из рабочей копии
-# без CI — плейсхолдер остаётся «dev».
+# Обновляется при каждом значимом коммите. У factory НЕТ release-workflow
+# (раздача с raw/main, не из релизов) — INSTALLER_COMMIT подставляется
+# только при запуске из git-checkout (блок ниже), из curl останется
+# плейсхолдер. Это ок: версия определяется INSTALLER_VERSION.
 #
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.09"
+INSTALLER_VERSION="2026.06.10"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -290,7 +291,7 @@ course_token_get_tier() {
 
 course_token_expected_tg() {
   local token="$1"
-  if [[ "$token" =~ ^(VIP|STD|SUB)-[A-F0-9]{16}-([0-9]{5,15})-[A-Za-z0-9_-]{80,120}$ ]]; then
+  if [[ "$token" =~ ^(VIP|STD|SUB)-[A-F0-9]{16}-([0-9]{5,15})-[A-Za-z0-9_-]{80,100}$ ]]; then
     printf '%s' "${BASH_REMATCH[2]}"
     return 0
   fi
@@ -315,7 +316,12 @@ course_token_load_cache() {
     perms=$(stat -f '%A' "$COURSE_TOKEN_CACHE" 2>/dev/null \
               || stat -c '%a' "$COURSE_TOKEN_CACHE" 2>/dev/null \
               || echo "?")
-    [[ "$perms" != "600" && "$perms" != "?" ]] && return 1
+    if [[ "$perms" == "?" ]]; then
+      # R2-аудит: stat недоступен — чиним права сами (fail-closed)
+      chmod 600 "$COURSE_TOKEN_CACHE" 2>/dev/null || return 1
+    elif [[ "$perms" != "600" ]]; then
+      return 1
+    fi
     tr -d '[:space:]' < "$COURSE_TOKEN_CACHE" 2>/dev/null || true
   fi
 }
@@ -432,7 +438,7 @@ course_verify_token() {
   local machine_tg_id="$2"
 
   local tier hash_part tg_part sig_part
-  if [[ "$token" =~ ^(VIP|STD|SUB)-([A-F0-9]{16})-([0-9]{5,15})-([A-Za-z0-9_-]{80,120})$ ]]; then
+  if [[ "$token" =~ ^(VIP|STD|SUB)-([A-F0-9]{16})-([0-9]{5,15})-([A-Za-z0-9_-]{80,100})$ ]]; then
     tier="${BASH_REMATCH[1]}"
     hash_part="${BASH_REMATCH[2]}"
     tg_part="${BASH_REMATCH[3]}"
@@ -457,7 +463,7 @@ course_verify_token() {
   fi
 
   # Legacy v1 VIP: подпись валидна, но TG-binding нет. Принимаем только для VIP backward-compat.
-  if [[ "$token" =~ ^VIP-([A-F0-9]{16})-([A-Za-z0-9_-]{80,120})$ ]]; then
+  if [[ "$token" =~ ^VIP-([A-F0-9]{16})-([A-Za-z0-9_-]{80,100})$ ]]; then
     hash_part="${BASH_REMATCH[1]}"
     sig_part="${BASH_REMATCH[2]}"
     if course_verify_ed25519_signature "$hash_part" "$sig_part"; then
@@ -494,6 +500,13 @@ course_validate_and_set() {
   COURSE_TOKEN=""
   COURSE_TIER=""
   if [[ -z "$(course_token_get_tier "$token" 2>/dev/null)" ]]; then
+    # R2-аудит: HRM (Hermes SKU) — целевое сообщение вместо «не распознан»
+    if [[ "$token" == HRM-* ]]; then
+      warn "Это HRM-токен (супер-агент Hermes), а не токен движка."
+      echo -e "   ${DIM}Для движка нужен SUB-/STD-/VIP-токен. Hermes ставится ПОСЛЕ движка:${NC}"
+      echo -e "   ${DIM}установщик агентов → пункт 4 (Hermes).${NC}"
+      return 1
+    fi
     warn "Формат токена не распознан. Ожидается SUB-..., STD-... или VIP-..."
     return 1
   fi
@@ -3364,14 +3377,31 @@ else
       divider
 
       explain "Добавим ваш Telegram ID, чтобы бот сразу отвечал вам." \
-        "Узнать ID можно через @userinfobot. Можно нажать Enter и пропустить."
+        "Узнать ID можно через @userinfobot."
 
+      # R2-аудит: ID уже зашит в course-token — префиллим его, и
+      # предупреждаем при расхождении (иначе агенты на втором шаге не
+      # примут токен по чужому ID, а кэш токена сотрётся).
+      _tok_tg=""
+      if [[ "${COURSE_TOKEN:-}" =~ ^(VIP|STD|SUB)-[A-F0-9]{16}-([0-9]{5,15})- ]]; then
+        _tok_tg="${BASH_REMATCH[2]}"
+      fi
       echo ""
+      if [[ -n "$_tok_tg" ]]; then
+        echo -e "   ${DIM}В твоём токене указан ID: ${BOLD}${_tok_tg}${NC}${DIM} — Enter, чтобы взять его.${NC}"
+      fi
       echo -e "   ${BOLD}${WHITE}Введите ваш Telegram user ID:${NC}"
       read -r TG_USER_ID
 
       # Только цифры допустимы
       TG_USER_ID=$(echo "$TG_USER_ID" | tr -cd '0-9')
+      [[ -z "$TG_USER_ID" && -n "$_tok_tg" ]] && TG_USER_ID="$_tok_tg"
+      if [[ -n "$_tok_tg" && -n "$TG_USER_ID" && "$TG_USER_ID" != "$_tok_tg" ]]; then
+        warn "Введённый ID (${TG_USER_ID}) отличается от ID в токене (${_tok_tg})."
+        echo -e "   ${DIM}Установщик агентов сверяет токен с ID из токена. Если это другой${NC}"
+        echo -e "   ${DIM}твой аккаунт — ок; если опечатка — перезапусти шаг с верным ID.${NC}"
+      fi
+      unset _tok_tg
 
       if [[ -n "$TG_USER_ID" ]]; then
         # ВАЖНО: все openclaw-команды с || true — чтобы случайный non-zero
@@ -3743,6 +3773,14 @@ else
     echo ""
   fi
 
+  # ─── VPS: отключаем bonjour (mDNS) — на сервере он валит gateway в цикл
+  # рестартов (CIAO PROBING CANCELLED). R2-аудит: раньше фикс жил только в
+  # agents-pack --vps и в объединённом потоке/у SUB на VPS не срабатывал.
+  if [[ "$VPS_MODE" == true && "$DRY_RUN" != true ]]; then
+    openclaw config set plugins.entries.bonjour.enabled false &>/dev/null || true
+    openclaw gateway restart &>/dev/null || true
+  fi
+
   # ─── Объединённый платный поток: STD/VIP — сразу ставим AI-команду ───
   # Тариф из токена решает: SUB → только движок (блок ниже);
   # STD/VIP → докачиваем agents-pack и ставим агентов В ТОЙ ЖЕ сессии
@@ -3766,22 +3804,35 @@ else
     # agents-pack сам читает этот кэш через acquire_course_token.
     # Скачиваем устойчиво: latest → прямой тег (обход 504) → git clone.
     _chain_ok=false
+    _chain_fail=""
     if _agents_run=$(_fetch_agents_installer); then
+      # R2-аудит: пробрасываем VPS-режим (иначе на сервере терялись
+      # bonjour-фикс и SSH-tunnel-инструкция дочернего установщика)
+      [[ "$VPS_MODE" == true ]] && _agents_run="$_agents_run --vps"
       if eval "$_agents_run"; then
         _chain_ok=true
+      else
+        _chain_fail="child"
       fi
+    else
+      _chain_fail="fetch"
     fi
 
     if [[ "$_chain_ok" != true ]]; then
       echo ""
-      warn "Движок установлен и работает, но автоустановку агентов не удалось завершить (GitHub недоступен?)."
+      # R2-аудит: честная диагностика — раньше ЛЮБОЙ сбой списывался на GitHub
+      if [[ "$_chain_fail" == "fetch" ]]; then
+        warn "Движок установлен и работает, но скачать установщик агентов не удалось (GitHub недоступен?)."
+      else
+        warn "Движок установлен и работает, но установщик агентов завершился с ошибкой — причина в сообщении ВЫШЕ."
+      fi
       echo -e "   ${DIM}Доустанови команду агентов вручную (в новом терминале), любым способом:${NC}"
       echo -e "      ${GREEN}bash <(curl -fsSL https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh)${NC}"
       echo -e "   ${DIM}   если GitHub отдаёт 504 — через git:${NC}"
       echo -e "      ${GREEN}git clone https://github.com/tonytrue92-beep/openclaw-agents-pack && bash openclaw-agents-pack/scripts/install-agents.sh${NC}"
       echo ""
     fi
-    unset _tier_label _chain_ok _agents_run
+    unset _tier_label _chain_ok _chain_fail _agents_run
     break   # агенты поставлены (или показан fallback) — их финал последний, выходим
   fi
 

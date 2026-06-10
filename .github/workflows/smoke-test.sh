@@ -154,3 +154,18 @@ grep -q 'models auth login --provider "$PROVIDER"' scripts/openclaw-add-codex.sh
 grep -q 'openclaw-add-codex.sh' "$INSTALLER" \
   || { echo "✗ FAIL: установщик не ставит openclaw-add-codex"; exit 1; }
 echo "✓ PASS: хелпер openclaw-add-codex (ChatGPT мозги) на месте + ставится"
+
+# ─── Static checks: аудит R2 ───
+grep -q '_agents_run --vps' "$INSTALLER" \
+  || { echo "✗ FAIL: чейн не пробрасывает --vps"; exit 1; }
+grep -q 'plugins.entries.bonjour.enabled false' "$INSTALLER" \
+  || { echo "✗ FAIL: factory не отключает bonjour на VPS"; exit 1; }
+grep -q '_chain_fail' "$INSTALLER" \
+  || { echo "✗ FAIL: нет раздельной диагностики чейна (fetch vs child)"; exit 1; }
+grep -q 'HRM-\*' "$INSTALLER" \
+  || { echo "✗ FAIL: нет целевого сообщения для HRM-токена"; exit 1; }
+grep -q '_tok_tg' "$INSTALLER" \
+  || { echo "✗ FAIL: TG ID не префиллится из токена"; exit 1; }
+grep -q '{80,120}' "$INSTALLER" \
+  && { echo "✗ FAIL: остался regex {80,120} (должен быть {80,100})"; exit 1; }
+echo "✓ PASS: аудит R2 (--vps чейн, bonjour, диагностика, HRM, TG-префилл)"

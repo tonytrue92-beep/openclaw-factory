@@ -13,6 +13,8 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'SHA256SUMS'
+      - 'cloudflare/**'
+      - 'docs/**'
   pull_request:
     branches: [main]
     paths:
@@ -20,6 +22,8 @@ on:
       - '.github/workflows/**'
       - 'tests/**'
       - 'SHA256SUMS'
+      - 'cloudflare/**'
+      - 'docs/**'
 
 permissions:
   contents: read
@@ -44,13 +48,21 @@ jobs:
           #   SC2034 — unused variable (резервные константы в палитре/флаги;
           #            реальные баги в этом классе ловит скорее bash -n или
           #            smoke-тест, а shellcheck тут даёт много шума).
+          # R2-аудит: глоб вместо перечисления — новые скрипты (add-codex и
+          # будущие) не выпадают из проверки.
           shellcheck \
             --severity=warning \
             --exclude=SC1090,SC1091,SC2155,SC2086,SC2034 \
-            scripts/demo-install.sh \
-            scripts/openclaw-switch-model.sh \
-            scripts/install-claude-proxy.sh \
-            scripts/openclaw-factory-reauth.sh
+            scripts/*.sh
+
+      - name: Worker syntax (node --check)
+        run: |
+          # cloudflare/worker.js — единственный JS в репо; ловим синтакс-ошибки
+          if [[ -f cloudflare/worker.js ]]; then
+            cp cloudflare/worker.js /tmp/worker-check.mjs
+            node --check /tmp/worker-check.mjs
+            echo "OK: worker.js синтаксически валиден"
+          fi
 
   syntax:
     name: bash -n (syntax)
