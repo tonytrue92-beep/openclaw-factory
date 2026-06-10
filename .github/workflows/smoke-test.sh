@@ -169,3 +169,14 @@ grep -q '_tok_tg' "$INSTALLER" \
 grep -q '{80,120}' "$INSTALLER" \
   && { echo "✗ FAIL: остался regex {80,120} (должен быть {80,100})"; exit 1; }
 echo "✓ PASS: аудит R2 (--vps чейн, bonjour, диагностика, HRM, TG-префилл)"
+
+# ─── Хотфикс по саппорту 2026-06-10: opencode-go ───
+grep -q 'opencode-go/deepseek-v4-flash' scripts/demo-install.sh \
+  || { echo "FAIL: дефолт-модель не opencode-go/deepseek-v4-flash"; exit 1; }
+grep -q 'opencode/minimax-m2.5-free' scripts/demo-install.sh \
+  && { echo "FAIL: остался мёртвый opencode/minimax-m2.5-free"; exit 1; }
+grep -q '"provider": "opencode-go"' scripts/demo-install.sh \
+  || { echo "FAIL: auth-profile provider не opencode-go"; exit 1; }
+grep -q 'NODE_MAJOR" -eq 22' scripts/demo-install.sh \
+  || { echo "FAIL: нет гейта «ровно Node 22»"; exit 1; }
+echo "OK: hotfix 2026-06-10 (opencode-go + node22 gate)"

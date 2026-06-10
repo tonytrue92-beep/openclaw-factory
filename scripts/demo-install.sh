@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.10"
+INSTALLER_VERSION="2026.06.10.1"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -1841,7 +1841,7 @@ ensure_gateway_healthy() {
 #     или «Invalid API key».
 #
 # Причины, которые мы реально видели в чате:
-#   1. agents.defaults.model.primary = opencode/minimax-m2.5-free,
+#   1. agents.defaults.model.primary = opencode-go/deepseek-v4-flash,
 #      но agents.list[i].model = opencode/kimi-k2.5 (старый override)
 #   2. После нескольких кругов `configure --section model` auth-профиль
 #      остался в «opencode:default» с кривым ключом, а модель уже
@@ -1857,7 +1857,7 @@ ensure_gateway_healthy() {
 #   • чистит session cache (чтобы не тащился tool_use_id с прошлой модели)
 #   • НЕ трогает auth-profiles — это отдельный слой, чинится через R3 меню
 ensure_model_consistency() {
-  local expected_model="${1:-opencode/minimax-m2.5-free}"
+  local expected_model="${1:-opencode-go/deepseek-v4-flash}"
 
   set +e
 
@@ -2270,12 +2270,12 @@ show_cmd "openclaw status --all"
 echo ""
 terminal "OpenClaw 2026.4.9 (0512059)"
 terminal "Gateway: running (pid 12345)"
-terminal "Model: opencode/minimax-m2.5-free"
+terminal "Model: opencode-go/deepseek-v4-flash"
 terminal "Channels: 0 configured"
 terminal "Agents: 1 (main)"
 terminal "Sessions: 0 active"
 echo ""
-ru "'Model: opencode/minimax-m2.5-free' — AI-модель, которую используют агенты."
+ru "'Model: opencode-go/deepseek-v4-flash' — AI-модель, которую используют агенты."
 ru "'Channels: 0 configured' — мессенджеры ещё не подключены. Сделаем на следующем шаге."
 ru "'Agents: 1 (main)' — есть один агент по умолчанию. Скоро создадим ещё."
 ru "'Sessions: 0 active' — нет активных разговоров (никто ещё не писал)."
@@ -2415,7 +2415,7 @@ show_cmd "openclaw agents add copywriter"
 echo ""
 terminal "✓ Agent created: copywriter"
 terminal "  Workspace: ~/.openclaw/agents/copywriter"
-terminal "  Model: opencode/minimax-m2.5-free (inherited from defaults)"
+terminal "  Model: opencode-go/deepseek-v4-flash (inherited from defaults)"
 echo ""
 ru "'Agent created' — агент создан. Теперь он существует в системе."
 ru "'Workspace' — у агента появилась своя рабочая папка для сессий и памяти."
@@ -2443,8 +2443,8 @@ explain "Посмотрим список всех агентов:"
 show_cmd "openclaw agents list"
 echo ""
 terminal "ID           Name         Model                         Bindings"
-terminal "main         Main         opencode/minimax-m2.5-free   -"
-terminal "copywriter   Copywriter   opencode/minimax-m2.5-free   telegram"
+terminal "main         Main         opencode-go/deepseek-v4-flash   -"
+terminal "copywriter   Copywriter   opencode-go/deepseek-v4-flash   telegram"
 echo ""
 ru "'main' — агент по умолчанию, создаётся автоматически. Пока ни к чему не привязан."
 ru "'copywriter' — наш новый агент, привязан к каналу telegram."
@@ -2458,7 +2458,7 @@ explain "Переключение AI-моделей." \
   "или индивидуально (для конкретного агента)."
 
 show_cmd "# Модель для всех агентов по умолчанию:"
-show_cmd 'openclaw config set agents.defaults.model.primary "opencode/minimax-m2.5-free"'
+show_cmd 'openclaw config set agents.defaults.model.primary "opencode-go/deepseek-v4-flash"'
 echo ""
 show_cmd "# Персональная модель для одного агента:"
 show_cmd "openclaw config set 'agents.list[1].model' '{\"primary\":\"openai/gpt-4o\"}' --strict-json"
@@ -2874,8 +2874,13 @@ else
   if command -v node &>/dev/null; then
     NODE_VER=$(node -v)
     NODE_MAJOR=$(echo "$NODE_VER" | sed 's/v//' | cut -d. -f1)
-    if [[ "$NODE_MAJOR" -ge 22 ]]; then
+    if [[ "$NODE_MAJOR" -eq 22 ]]; then
       echo -e "${GREEN}✓ ${NODE_VER}${NC}"
+    elif [[ "$NODE_MAJOR" -gt 22 ]]; then
+      # Саппорт 2026-06-10: v24/системный Node ломал npm install -g (EACCES,
+      # «openclaw: not installed»). Рецепт дня: ровно Node 22 через nvm.
+      echo -e "${YELLOW}⚠ ${NODE_VER} — рекомендуется ровно 22 через nvm${NC}"
+      NEEDS_NODE_INSTALL=true
     else
       echo -e "${RED}✗ ${NODE_VER} (нужна >= 22.14)${NC}"
       NEEDS_NODE_INSTALL=true
@@ -3036,7 +3041,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   echo ""
   terminal "✓ API key saved"
-  terminal "✓ Default model: opencode/minimax-m2.5-free"
+  terminal "✓ Default model: opencode-go/deepseek-v4-flash"
   terminal "✓ Config created: ~/.openclaw/openclaw.json"
   terminal "✓ Gateway service installed"
   terminal "✓ Gateway started on port 18789"
@@ -3051,7 +3056,7 @@ else
     # Смотрим что за модель сейчас стоит — чтобы поймать кейс
     # живой кейс: стоит платная модель и приходит 401 No payment method
     CURRENT_MODEL=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
-    EXPECTED_MODEL="opencode/minimax-m2.5-free"
+    EXPECTED_MODEL="opencode-go/deepseek-v4-flash"
 
     explain "OpenClaw уже настроен — нашёлся файл ~/.openclaw/openclaw.json." \
       "" \
@@ -3139,8 +3144,8 @@ else
     divider
 
     # ---- Провайдер и модель ----
-    PROVIDER="opencode"
-    MODEL="opencode/minimax-m2.5-free"
+    PROVIDER="opencode-go"
+    MODEL="opencode-go/deepseek-v4-flash"
     KEY_URL="https://opencode.ai"
 
     explain "Откройте opencode.ai и создайте API-ключ." \
@@ -3198,14 +3203,14 @@ else
 {
   "version": 1,
   "profiles": {
-    "opencode:default": {
+    "opencode-go:default": {
       "type": "api_key",
-      "provider": "opencode",
+      "provider": "opencode-go",
       "key": "$API_KEY"
     }
   },
   "lastGood": {
-    "opencode": "opencode:default"
+    "opencode": "opencode-go:default"
   }
 }
 AUTHEOF
@@ -3446,7 +3451,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   terminal "✓ Agent created: assistant"
   terminal "  Workspace: ~/.openclaw/agents/assistant"
-  terminal "  Model: opencode/minimax-m2.5-free (inherited from defaults)"
+  terminal "  Model: opencode-go/deepseek-v4-flash (inherited from defaults)"
   echo ""
   ru "Агент создан с рабочей папкой для сессий и памяти."
 
@@ -3528,7 +3533,7 @@ WSEOF
   { openclaw agents add "${AGENT_ID}" \
       --non-interactive \
       --workspace "$WORKSPACE_DIR" \
-      --model "opencode/minimax-m2.5-free" \
+      --model "opencode-go/deepseek-v4-flash" \
       ${ADD_BIND_ARG} 2>&1 || true; } | while IFS= read -r line; do
     echo -e "   ${DIM}${line}${NC}"
   done
@@ -3635,7 +3640,7 @@ echo ""
 # Pre-flight: ловим рассинхронизацию model у default vs agents.list[*]
 # до того как пользователь напишет боту и увидит «Model is disabled».
 if [[ "$DRY_RUN" != true ]]; then
-  ensure_model_consistency "opencode/minimax-m2.5-free" || true
+  ensure_model_consistency "opencode-go/deepseek-v4-flash" || true
 fi
 
 if [[ "$DRY_RUN" == true ]]; then
@@ -3644,7 +3649,7 @@ if [[ "$DRY_RUN" == true ]]; then
   sleep 0.5
   terminal "OpenClaw 2026.4.9 (0512059)"
   terminal "Gateway: running (pid 54321)"
-  terminal "Model: opencode/minimax-m2.5-free"
+  terminal "Model: opencode-go/deepseek-v4-flash"
   terminal "Channels: 1 configured (telegram)"
   terminal "Agents: 2 (main, assistant)"
   terminal "Sessions: 0 active"
@@ -3764,7 +3769,7 @@ else
     fi
 
     CURRENT_MODEL_CHECK=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
-    if [[ "$CURRENT_MODEL_CHECK" == *"-free" ]]; then
+    if [[ "$CURRENT_MODEL_CHECK" == *"-free" || "$CURRENT_MODEL_CHECK" == "opencode-go/deepseek-v4-flash" ]]; then
       echo -e "   ${GREEN}✓${NC} Модель: ${CURRENT_MODEL_CHECK} (бесплатная)"
     else
       echo -e "   ${YELLOW}○${NC} Модель: ${CURRENT_MODEL_CHECK:-не задана}"
