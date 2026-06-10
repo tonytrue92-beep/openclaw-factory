@@ -162,7 +162,7 @@ bash scripts/install-claude-proxy.sh --uninstall
 - **npm** — идёт вместе с Node.js
 - **macOS** или **Linux** (для **Windows** — см. [docs/windows-install.md](docs/windows-install.md), установка через WSL2)
 - **Telegram-бот** — создаётся через [@BotFather](https://t.me/BotFather)
-- **API-ключ [opencode.ai](https://opencode.ai)** — один ключ даёт доступ ко всем моделям (Claude, GPT, Gemini, Grok, Kimi, MiniMax). По умолчанию установщик ставит бесплатную `opencode/minimax-m2.5-free` (раздел **OpenCode Zen** → **MiniMax M2.5 Free**)
+- **API-ключ [opencode.ai](https://opencode.ai)** — один ключ даёт доступ ко всем моделям (Claude, GPT, Gemini, Grok, Kimi, MiniMax). По умолчанию установщик ставит бесплатную `opencode-go/deepseek-v4-flash` (провайдер opencode-go; старые имена `opencode/...-free` в новых версиях OpenClaw не существуют)
 
 ---
 

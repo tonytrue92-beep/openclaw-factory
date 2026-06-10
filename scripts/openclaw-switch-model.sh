@@ -12,7 +12,7 @@
 #
 #  Использование:
 #    openclaw-switch-model                                    # интерактивно — покажет меню
-#    openclaw-switch-model opencode/minimax-m2.5-free          # сразу на указанную модель
+#    openclaw-switch-model opencode-go/deepseek-v4-flash          # сразу на указанную модель
 #    openclaw-switch-model --list                             # показать список доступных
 #    openclaw-switch-model --help                             # эта справка
 # ═══════════════════════════════════════════════════════════════════════
@@ -44,7 +44,7 @@ ${BOLD}Использование:${NC}
   openclaw-switch-model --help                   ${DIM}# эту справку${NC}
 
 ${BOLD}Популярные модели:${NC}
-  ${GREEN}opencode/minimax-m2.5-free${NC}         ${DIM}# бесплатная, по умолчанию${NC}
+  ${GREEN}opencode-go/deepseek-v4-flash${NC}         ${DIM}# бесплатная, по умолчанию${NC}
   ${GREEN}opencode/grok-4-fast-free${NC}          ${DIM}# бесплатная, от xAI${NC}
   ${GREEN}opencode/kimi-dev-72b-free${NC}         ${DIM}# бесплатная, для кода${NC}
   ${GREEN}opencode/claude-sonnet-4-5${NC}         ${DIM}# платная, премиум${NC}
@@ -74,7 +74,7 @@ case "${1:-}" in
     echo ""
     echo -e "${BOLD}Выберите модель:${NC}"
     echo ""
-    echo -e "  ${CYAN}1${NC}) ${GREEN}opencode/minimax-m2.5-free${NC}      ${DIM}(бесплатная, быстрая)${NC}"
+    echo -e "  ${CYAN}1${NC}) ${GREEN}opencode-go/deepseek-v4-flash${NC}      ${DIM}(бесплатная, быстрая)${NC}"
     echo -e "  ${CYAN}2${NC}) ${GREEN}opencode/grok-4-fast-free${NC}       ${DIM}(бесплатная, от xAI)${NC}"
     echo -e "  ${CYAN}3${NC}) ${GREEN}opencode/kimi-dev-72b-free${NC}      ${DIM}(бесплатная, код/аналитика)${NC}"
     echo -e "  ${CYAN}4${NC}) ${GREEN}opencode/claude-sonnet-4-5${NC}      ${DIM}(платная, премиум)${NC}"
@@ -84,7 +84,7 @@ case "${1:-}" in
     echo ""
     read -r -p "Ваш выбор [1-6 / 0]: " CHOICE
     case "$CHOICE" in
-      1) MODEL="opencode/minimax-m2.5-free" ;;
+      1) MODEL="opencode-go/deepseek-v4-flash" ;;
       2) MODEL="opencode/grok-4-fast-free" ;;
       3) MODEL="opencode/kimi-dev-72b-free" ;;
       4) MODEL="opencode/claude-sonnet-4-5" ;;

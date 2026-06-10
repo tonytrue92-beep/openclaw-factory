@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-06-10.1 — Хотфикс по живому саппорту
+
+- **P0: мёртвая дефолт-модель.** OpenClaw переименовал провайдер `opencode` →
+  `opencode-go`; `opencode/minimax-m2.5-free` больше не существует («Unknown
+  model» у клиентов). Дефолт → `opencode-go/deepseek-v4-flash`, provider/profile
+  в auth-profiles.json → `opencode-go` (тоже в reauth/switch-model/add-codex).
+- **Node ровно 22:** v24/системный Node ломал `npm install -g` (саппорт-кейсы) —
+  гейт теперь предлагает автопереход на nvm+Node 22 и при major>22.
+
 ## 2026-06-10 — Cloudflare убран (решение Антона)
 
 ### Removed

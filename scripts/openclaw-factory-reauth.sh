@@ -116,7 +116,7 @@ if [[ -z "$PROVIDER" ]]; then
   echo -e "${BOLD}Выбор [1/2/3, Enter = 1]:${NC}"
   read -r choice
   case "${choice:-1}" in
-    1|"") PROVIDER="opencode" ;;
+    1|"") PROVIDER="opencode-go" ;;
     2)    PROVIDER="openrouter" ;;
     3)
       echo -e "${BOLD}Введите id провайдера (строка без пробелов):${NC}"
@@ -179,7 +179,7 @@ while true; do
     continue
   fi
 
-  if [[ "$PROVIDER" == "opencode" && ! "$API_KEY" =~ ^sk- ]]; then
+  if [[ "$PROVIDER" == "opencode-go" && ! "$API_KEY" =~ ^sk- ]]; then
     warn "Ключ opencode.ai обычно начинается с 'sk-'. Точно вставили правильный?"
     echo -e "${BOLD}Продолжить с этим значением? [y/N]:${NC}"
     read -r force_key
