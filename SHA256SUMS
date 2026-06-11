@@ -1,13 +1,13 @@
 # SHA-256 checksums for publicly distributed installer scripts.
-# Generated: 2026-06-11 05:14:49 UTC
-# Commit: bfcf188
+# Generated: 2026-06-11 05:25:22 UTC
+# Commit: 07f5426
 #
 # Verify a downloaded script matches the committed version:
 #   curl -fsSL <raw-url> | shasum -a 256
 #   (or on Linux: sha256sum <file>)
 #
 
-e837b7f970a97ded0c3e1d1514af777a4e7de5cf7eb9f1bcfc74c57cd8568fa5  scripts/demo-install.sh
+0d70bda7a14fc7f32e69015855d0d8f692d93aa1132c180b3d1700df9ea277cc  scripts/demo-install.sh
 2fbf9f94cdb650cc8f2d2848107a5877f02c4eae1b4c442107cb1c3b85b1a4f9  scripts/install-claude-proxy.sh
 c58d722a490b4af6cc2140107a11fed107434ef89c6af9c5daf0e8e6ad916e34  scripts/install-git-hooks.sh
 e66c994a076285ebe8adeda284d81211eee6f969bb25281a7c21326a391383ea  scripts/openclaw-add-codex.sh
