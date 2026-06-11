@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.11"
+INSTALLER_VERSION="2026.06.11.1"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -3074,13 +3074,13 @@ else
     explain "OpenClaw уже настроен — нашёлся файл ~/.openclaw/openclaw.json." \
       "" \
       "  Текущая модель по умолчанию: ${BOLD}${CURRENT_MODEL:-(не задана)}${NC}" \
-      "  Рекомендованная (бесплатная): ${BOLD}${GREEN}${EXPECTED_MODEL}${NC}"
+      "  Стартовая модель системы: ${BOLD}${EXPECTED_MODEL}${NC}"
 
     echo ""
     echo -e "   ${BOLD}${WHITE}Что делать с существующей установкой?${NC}"
     echo ""
     echo -e "   ${BOLD}${GREEN}  1)${NC} ${BOLD}Оставить как есть${NC} — только прогнать health-check (${DIM}по умолчанию${NC})"
-    echo -e "   ${BOLD}${YELLOW}  2)${NC} ${BOLD}Вернуть бесплатную модель${NC} — если бот просит оплату"
+    echo -e "   ${BOLD}${YELLOW}  2)${NC} ${BOLD}Сбросить модель на стартовую${NC} — если бот не отвечает из-за модели"
     echo -e "   ${BOLD}${CYAN}  3)${NC} ${BOLD}Ввести новый API-ключ${NC}"
     echo -e "   ${BOLD}${RED}  4)${NC} ${BOLD}Полный сброс${NC} — начать с нуля"
     echo ""
@@ -3104,6 +3104,27 @@ else
             openclaw config set "agents.list[${i}].model" "\"${EXPECTED_MODEL}\"" --strict-json &>/dev/null || true
           done
           echo -e "   ${GREEN}✓${NC} Переназначена модель у всех ${AGENT_COUNT} агентов"
+        fi
+        # Старые установки: ключ лежит под провайдером «opencode» — новая
+        # модель opencode-go его не видит. Переименовываем профиль в файле.
+        _paf="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
+        if [[ -f "$_paf" ]] && grep -q '"opencode"' "$_paf" 2>/dev/null; then
+          python3 - "$_paf" <<'PYEOF' && echo -e "   ${GREEN}✓${NC} Auth-профиль переведён: opencode → opencode-go" || true
+import json,sys
+p=sys.argv[1]; d=json.load(open(p))
+prof=d.get("profiles") or {}
+out={}
+for k,v in prof.items():
+    if isinstance(v,dict) and v.get("provider")=="opencode":
+        v["provider"]="opencode-go"
+    out[k.replace("opencode:","opencode-go:")]=v
+d["profiles"]=out
+lg=d.get("lastGood") or {}
+d["lastGood"]={kk.replace("opencode","opencode-go") if kk=="opencode" else kk:
+               (vv.replace("opencode:","opencode-go:") if isinstance(vv,str) else vv)
+               for kk,vv in lg.items()}
+json.dump(d,open(p,"w"),ensure_ascii=False,indent=2)
+PYEOF
         fi
         ;;
       3)
