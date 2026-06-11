@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.10.1"
+INSTALLER_VERSION="2026.06.10.2"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -3273,6 +3273,26 @@ pause
 
 step_header "R4" "TELEGRAM BOT SETUP"
 
+# Самодиагностика (живой прогон 2026-06-10): при повторном запуске поверх
+# готовой установки канал Telegram уже есть — токен заново просить нельзя
+# (клиента это сбивает: «какой токен? у меня всё работало»).
+TG_ALREADY_CONFIGURED=false
+if [[ "$DRY_RUN" != true ]]; then
+  _existing_tg="$(openclaw channels status --probe 2>/dev/null </dev/null \
+    | sed -nE 's/.*Telegram[^:]*:.*bot:@([A-Za-z0-9_]+).*/\1/p' | head -1)"
+  if [[ -n "${_existing_tg:-}" ]]; then
+    TG_ALREADY_CONFIGURED=true
+    BOT_USERNAME="$_existing_tg"
+    TELEGRAM_CONNECTED=true
+    OWNER_TG_ID="$(course_detect_owner_tg_id 2>/dev/null || true)"
+    echo -e "   ${GREEN}✓ Telegram уже подключён: @${_existing_tg}${NC}"
+    echo -e "   ${DIM}Пропускаю шаг — новый токен не нужен. Хочешь другого бота?${NC}"
+    echo -e "   ${DIM}Полный сброс — пункт 4 на шаге настройки (R3).${NC}"
+  fi
+fi
+
+if [[ "$TG_ALREADY_CONFIGURED" != true ]]; then
+
 explain "Создайте бота через @BotFather в Telegram (/newbot) и скопируйте токен."
 
 echo ""
@@ -3436,7 +3456,19 @@ pause
 #  REAL STEP 5: Создание первого ассистента
 # ═══════════════════════════════════════════════════════════════
 
+fi  # TG_ALREADY_CONFIGURED
+
 step_header "R5" "CREATE YOUR FIRST ASSISTANT"
+
+# Самодиагностика: main-агент уже существует → не создаём/не онбордим заново.
+AGENT_ALREADY_EXISTS=false
+if [[ "$DRY_RUN" != true ]] \
+   && [[ "$(openclaw config get agents.list 2>/dev/null </dev/null | grep -c '"id"')" -gt 0 ]]; then
+  AGENT_ALREADY_EXISTS=true
+  echo -e "   ${GREEN}✓ Ассистент уже создан — пропускаю шаг.${NC}"
+fi
+
+if [[ "$AGENT_ALREADY_EXISTS" != true ]]; then
 
 explain "Создаём первого AI-ассистента для Telegram."
 
@@ -3631,6 +3663,8 @@ pause
 # ═══════════════════════════════════════════════════════════════
 #  REAL STEP 6: Проверка и итоги
 # ═══════════════════════════════════════════════════════════════
+
+fi  # AGENT_ALREADY_EXISTS
 
 step_header "R6" "FINAL CHECK"
 

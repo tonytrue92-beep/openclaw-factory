@@ -180,3 +180,17 @@ grep -q '"provider": "opencode-go"' scripts/demo-install.sh \
 grep -q 'NODE_MAJOR" -eq 22' scripts/demo-install.sh \
   || { echo "FAIL: нет гейта «ровно Node 22»"; exit 1; }
 echo "OK: hotfix 2026-06-10 (opencode-go + node22 gate)"
+
+# ─── Скип R4/R5 при готовой установке (живой прогон 2026-06-10) ───
+grep -q 'TG_ALREADY_CONFIGURED=true' scripts/demo-install.sh \
+  || { echo "FAIL: нет R4-гейта Telegram-уже-подключён"; exit 1; }
+grep -q 'AGENT_ALREADY_EXISTS=true' scripts/demo-install.sh \
+  || { echo "FAIL: нет R5-гейта агент-уже-есть"; exit 1; }
+grep -q 'fi  # TG_ALREADY_CONFIGURED' scripts/demo-install.sh \
+  || { echo "FAIL: R4-гейт не закрыт перед R5"; exit 1; }
+grep -q 'fi  # AGENT_ALREADY_EXISTS' scripts/demo-install.sh \
+  || { echo "FAIL: R5-гейт не закрыт перед R6"; exit 1; }
+grep -q 'TELEGRAM_CONNECTED=true' scripts/demo-install.sh \
+  || { echo "FAIL: скип-ветка не проставляет TELEGRAM_CONNECTED"; exit 1; }
+echo "OK: повторный запуск поверх готовой установки не просит токен/агента заново"
+
