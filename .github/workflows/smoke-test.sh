@@ -194,3 +194,12 @@ grep -q 'TELEGRAM_CONNECTED=true' scripts/demo-install.sh \
   || { echo "FAIL: скип-ветка не проставляет TELEGRAM_CONNECTED"; exit 1; }
 echo "OK: повторный запуск поверх готовой установки не просит токен/агента заново"
 
+# ─── Меню из 3 боевых пунктов (решение Антона 2026-06-11) ───
+grep -q 'Установить AI-команду агентов' scripts/demo-install.sh \
+  || { echo "FAIL: нет пункта «Установить AI-команду агентов»"; exit 1; }
+grep -q 'Выберите вариант \[1/2/3, Enter = 1\]' scripts/demo-install.sh \
+  || { echo "FAIL: меню не [1/2/3, Enter = 1]"; exit 1; }
+grep -qE '^\s+echo -e .*Демо.*— посмотреть процесс' scripts/demo-install.sh \
+  && { echo "FAIL: пункт «Демо» всё ещё в меню"; exit 1; }
+echo "OK: главное меню — 3 пункта (установка / агенты / VPS)"
+

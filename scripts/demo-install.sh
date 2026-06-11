@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.10.2"
+INSTALLER_VERSION="2026.06.11"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -1950,40 +1950,53 @@ LOGO
 
   explain "Выберите вариант:"
 
-  echo -e "   ${BOLD}${GREEN}  1)${NC}  ${BOLD}Демо${NC} — посмотреть процесс без установки"
-  echo -e "   ${BOLD}${YELLOW}  2)${NC}  ${BOLD}Установить сейчас${NC} — OpenClaw + Telegram-бот"
-  echo -e "   ${BOLD}${CYAN}  3)${NC}  ${BOLD}Симуляция${NC} — пройти установку без изменений"
-  echo -e "   ${BOLD}${MAGENTA}  4)${NC}  ${BOLD}VPS 24/7${NC} — бот работает, даже когда ноут выключен"
+  # Решение Антона 2026-06-11: «Демо» и «Симуляция» убраны из меню —
+  # клиентов они только путали (запускали демо вместо установки).
+  # Код демо/симуляции остаётся в скрипте для отладки (см. SKIP_DEMO/DRY_RUN).
+  echo -e "   ${BOLD}${GREEN}  1)${NC}  ${BOLD}Установить OpenClaw${NC} — движок + Telegram-бот ${DIM}(по умолчанию)${NC}"
+  echo -e "   ${BOLD}${YELLOW}  2)${NC}  ${BOLD}Установить AI-команду агентов${NC} — если OpenClaw уже стоит"
+  echo -e "   ${BOLD}${MAGENTA}  3)${NC}  ${BOLD}VPS 24/7${NC} — бот работает, даже когда ноут выключен"
   echo ""
 
   divider
 
-  echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2/3/4]:${NC}"
+  echo -e "   ${BOLD}${WHITE}Выберите вариант [1/2/3, Enter = 1]:${NC}"
   echo ""
   read -r INITIAL_CHOICE
 
   case "$INITIAL_CHOICE" in
-    2)
+    1|"")
       SKIP_DEMO=true
       DRY_RUN=false
       ;;
-    3)
-      SKIP_DEMO=true
-      DRY_RUN=true
+    2)
+      # Доустановка AI-команды: движковый поток не нужен, сразу качаем
+      # установщик агентов (токен он возьмёт из кэша или спросит сам).
+      if ! command -v openclaw &>/dev/null || [[ ! -f "$HOME/.openclaw/openclaw.json" ]]; then
+        warn "OpenClaw ещё не установлен или не настроен — сначала выполните пункт 1."
+        exit 1
+      fi
+      echo ""
+      echo -e "   ${DIM}Скачиваю установщик AI-команды...${NC}"
+      if _agents_run=$(_fetch_agents_installer); then
+        [[ "${VPS_MODE:-false}" == true ]] && _agents_run="$_agents_run --vps"
+        eval "$_agents_run"
+        exit $?
+      else
+        warn "Не смог скачать установщик агентов (сеть/GitHub). Запустите вручную:"
+        echo -e "   ${GREEN}bash <(curl -fsSL https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh)${NC}"
+        exit 1
+      fi
       ;;
-    4)
+    3)
       # VPS-гайд — печатаем инструкцию и выходим; установка на этой
       # машине не нужна, клиент пойдёт запускать команду на VPS.
       show_vps_guide
       exit 0
       ;;
-    1|"")
-      # Идём в демо — SKIP_DEMO остаётся false
-      :
-      ;;
     *)
       echo ""
-      explain "Не распознал выбор. Запустите скрипт ещё раз и введите 1, 2, 3 или 4."
+      explain "Не распознал выбор. Запустите скрипт ещё раз и введите 1, 2 или 3."
       exit 0
       ;;
   esac
