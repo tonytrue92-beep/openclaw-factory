@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.11.2"
+INSTALLER_VERSION="2026.06.12"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -3410,6 +3410,7 @@ AGENT_ALREADY_EXISTS=false
 if [[ "$DRY_RUN" != true ]] \
    && [[ "$(openclaw config get agents.list 2>/dev/null </dev/null | grep -c '"id"')" -gt 0 ]]; then
   AGENT_ALREADY_EXISTS=true
+  AGENT_ID="main"
   echo -e "   ${GREEN}✓ Ассистент уже создан — пропускаю шаг.${NC}"
 fi
 
@@ -3706,7 +3707,7 @@ else
   OC_VER=$(openclaw --version 2>&1 | head -1)
   echo -e "   ${GREEN}✓${NC} OpenClaw ${OC_VER}"
   echo -e "   ${GREEN}✓${NC} Gateway (автозапуск при включении компьютера)"
-  echo -e "   ${GREEN}✓${NC} Агент: ${BOLD}${AGENT_ID}${NC}"
+  echo -e "   ${GREEN}✓${NC} Агент: ${BOLD}${AGENT_ID:-main}${NC}"
   if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
     echo -e "   ${GREEN}✓${NC} Telegram: @${BOT_USERNAME:-бот подключён}"
   fi

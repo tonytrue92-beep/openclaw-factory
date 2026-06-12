@@ -119,7 +119,11 @@ if openclaw models list --all 2>/dev/null | grep -qF "$MODEL"; then
 else
   warn "Модель не в списке openclaw models list --all"
   echo ""
-  read -r -p "Всё равно продолжить? [y/N]: " CONFIRM
+  if [[ "${OPENCLAW_SWITCH_ASSUME_YES:-0}" == "1" ]]; then
+    CONFIRM="y"; echo "   (auto-yes: модель официальная для нашей сборки, проверю через probe)"
+  else
+    read -r -p "Всё равно продолжить? [y/N]: " CONFIRM
+  fi
   [[ "$CONFIRM" =~ ^[YyДд] ]] || die "Отмена"
 fi
 
