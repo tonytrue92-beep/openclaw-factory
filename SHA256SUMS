@@ -1,16 +1,16 @@
 # SHA-256 checksums for publicly distributed installer scripts.
-# Generated: 2026-06-12 15:01:00 UTC
-# Commit: d7f2886
+# Generated: 2026-06-12 15:26:09 UTC
+# Commit: 6903b45
 #
 # Verify a downloaded script matches the committed version:
 #   curl -fsSL <raw-url> | shasum -a 256
 #   (or on Linux: sha256sum <file>)
 #
 
-62cc24715f44e8b273811a87216f46f606f5ef6b8f771a756abd1fa72c2d6337  scripts/demo-install.sh
+dd7362229ed77b6697ed3092fe1ca46489da58418f71787327f8df96a250dbb1  scripts/demo-install.sh
 2fbf9f94cdb650cc8f2d2848107a5877f02c4eae1b4c442107cb1c3b85b1a4f9  scripts/install-claude-proxy.sh
 c58d722a490b4af6cc2140107a11fed107434ef89c6af9c5daf0e8e6ad916e34  scripts/install-git-hooks.sh
-e66c994a076285ebe8adeda284d81211eee6f969bb25281a7c21326a391383ea  scripts/openclaw-add-codex.sh
+389443fc09cf465c6bd59a0963d1641abd4e1922cc80ef3d63642effc1cf55ce  scripts/openclaw-add-codex.sh
 f153a338c9d2d3df23720e6c221b4e026ca2a51d973949d734dbc9b845dc130a  scripts/openclaw-factory-reauth.sh
-b31bc8fcdd5a677d0c0e37cba8a7395d63ea57b3bc8f283b55975e343c0617cc  scripts/openclaw-switch-model.sh
+1e744cfa8b49d25216a23655e34105d60c5d70f4559c40e6b9ad752286954120  scripts/openclaw-switch-model.sh
 aef0726e5b3b45c379ce8653151c94f7c60d0abbcefec71d1a074aa3b14a0c3f  scripts/update-checksums.sh

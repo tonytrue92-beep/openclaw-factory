@@ -77,6 +77,15 @@ step "3/4 Вход в ChatGPT (provider: ${PROVIDER})"
 warn "После входа ChatGPT станет моделью по умолчанию для ВСЕХ агентов (шаг 4)."
 info "Сейчас откроется ссылка/код для входа — залогинься своим ChatGPT."
 # Намеренно БЕЗ --set-default: модель ставим явно на шаге 4 (прозрачно).
+echo ""
+echo "   Что сейчас будет (1 минута):"
+echo "   • откроется браузер — войди в свой обычный аккаунт ChatGPT;"
+echo "   • терминал НЕ закрывай;"
+echo "   • совет: тариф ChatGPT Pro (Plus быстро упирается в лимиты GPT-5.5);"
+echo "   • если браузер покажет ошибку на localhost — это бывает, вернись сюда:"
+echo "     вход мог уже пройти, я проверю; если спросит «Paste authorization"
+echo "     code» — вставь адрес страницы из браузера целиком."
+echo ""
 if openclaw models auth login --provider "$PROVIDER" $DEVICE_CODE; then
   ok "Вход выполнен"
 else
@@ -96,7 +105,7 @@ fi
 step "4/4 Ставлю ${MODEL} у ВСЕХ агентов (не только дефолт)"
 _SWITCH="$(command -v openclaw-switch-model || echo "$HOME/.openclaw/bin/openclaw-switch-model")"
 if [[ -x "$_SWITCH" ]]; then
-  "$_SWITCH" "$MODEL" || warn "Не удалось переключить модель — вручную: openclaw-switch-model ${MODEL}"
+  OPENCLAW_SWITCH_ASSUME_YES=1 "$_SWITCH" "$MODEL" || warn "Не удалось переключить модель — вручную: openclaw-switch-model ${MODEL}"
 else
   # Fallback: дефолт + каждый агент + чистка сессий + рестарт (как switch-model)
   openclaw config set agents.defaults.model.primary "$MODEL" >/dev/null 2>&1 || true
