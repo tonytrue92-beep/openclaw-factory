@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.11.1"
+INSTALLER_VERSION="2026.06.11.2"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -1435,7 +1435,7 @@ show_vps_guide() {
   echo -e "   ${DIM}│${NC}   ${GREEN}${BOLD}demo-install.sh) --vps --install${NC}"
   echo -e "   ${DIM}└──────────────────────────────────────────────────────────────────┘${NC}"
   echo ""
-  echo -e "   ${DIM}Дальше установщик попросит ключ opencode.ai, токен Telegram-бота и ваш Telegram ID.${NC}"
+  echo -e "   ${DIM}Дальше установщик попросит токен Telegram-бота и ваш Telegram ID.${NC}"
   echo -e "   ${DIM}Через 3–5 минут бот будет отвечать в Telegram.${NC}"
   echo ""
 }
@@ -3071,17 +3071,14 @@ else
     CURRENT_MODEL=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
     EXPECTED_MODEL="opencode-go/deepseek-v4-flash"
 
-    explain "OpenClaw уже настроен — нашёлся файл ~/.openclaw/openclaw.json." \
-      "" \
-      "  Текущая модель по умолчанию: ${BOLD}${CURRENT_MODEL:-(не задана)}${NC}" \
-      "  Стартовая модель системы: ${BOLD}${EXPECTED_MODEL}${NC}"
+    explain "OpenClaw уже настроен — нашёлся файл ~/.openclaw/openclaw.json."
 
     echo ""
     echo -e "   ${BOLD}${WHITE}Что делать с существующей установкой?${NC}"
     echo ""
     echo -e "   ${BOLD}${GREEN}  1)${NC} ${BOLD}Оставить как есть${NC} — только прогнать health-check (${DIM}по умолчанию${NC})"
     echo -e "   ${BOLD}${YELLOW}  2)${NC} ${BOLD}Сбросить модель на стартовую${NC} — если бот не отвечает из-за модели"
-    echo -e "   ${BOLD}${CYAN}  3)${NC} ${BOLD}Ввести новый API-ключ${NC}"
+    echo -e "   ${BOLD}${CYAN}  3)${NC} ${BOLD}Как подключить/сменить модель${NC} — показать команды"
     echo -e "   ${BOLD}${RED}  4)${NC} ${BOLD}Полный сброс${NC} — начать с нуля"
     echo ""
     echo -e "   ${BOLD}${WHITE}Выбор [1/2/3/4]:${NC}"
@@ -3128,14 +3125,11 @@ PYEOF
         fi
         ;;
       3)
-        # Новый ключ
-        AUTH_FILE="$HOME/.openclaw/agents/main/agent/auth-profiles.json"
-        if [[ -f "$AUTH_FILE" ]]; then
-          mv "$AUTH_FILE" "${AUTH_FILE}.backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
-          echo -e "   ${DIM}✓ Старый ключ сохранён в резервную копию${NC}"
-        fi
-        # Ниже выполнится блок ввода нового ключа — проставим флаг
-        NEED_KEY_INPUT=true
+        # Подключение/смена модели — после установки, своими командами
+        echo -e "   ${BOLD}${WHITE}Модель подключается после установки:${NC}"
+        echo -e "   ${GREEN}openclaw-add-codex${NC} ${DIM}— ChatGPT (GPT-5.5), вход в браузере${NC}"
+        echo -e "   ${GREEN}openclaw models auth login --provider <имя>${NC} ${DIM}— любой другой провайдер${NC}"
+        echo -e "   ${GREEN}openclaw-switch-model <id>${NC} ${DIM}— переключить модель у всех агентов${NC}"
         ;;
       4)
         # Полный сброс
@@ -3172,94 +3166,11 @@ PYEOF
   # Если выбран ввод нового ключа ИЛИ полный сброс ИЛИ первая установка —
   # запускаем блок opencode-ключа
   if [[ ! -f "$HOME/.openclaw/openclaw.json" || "${NEED_KEY_INPUT:-false}" == true ]]; then
+    # Решение Антона 2026-06-11: установка идёт БЕЗ ключей и БЕЗ выбора
+    # модели. Бот подключается к Telegram, а модель клиент подключает сам
+    # после установки (финальный экран покажет команды).
     explain "Настраиваем OpenClaw." \
-      "Нужно будет вставить только API-ключ opencode.ai."
-
-    divider
-
-    # ---- Провайдер и модель ----
-    PROVIDER="opencode-go"
-    MODEL="opencode-go/deepseek-v4-flash"
-    KEY_URL="https://opencode.ai"
-
-    explain "Откройте opencode.ai и создайте API-ключ." \
-      "По умолчанию используем MiniMax Free — бесплатно, карта не нужна." \
-      "Если позже выберете платные модели, понадобится иностранная карта." \
-      "Виртуальная карта за 5 минут: https://t.me/WantToPayBot?start=w17851188--GUSNM"
-
-    # Автоматически открываем браузер
-    if command -v open >/dev/null 2>&1; then
-      open "$KEY_URL" &>/dev/null &
-      echo -e "   ${DIM}✓ Открыл opencode.ai в браузере${NC}"
-    elif command -v xdg-open >/dev/null 2>&1; then
-      xdg-open "$KEY_URL" &>/dev/null &
-      echo -e "   ${DIM}✓ Открыл opencode.ai в браузере${NC}"
-    fi
-
-    echo ""
-    explain "Ключ — это пароль от AI-аккаунта. Никому его не показывайте."
-
-    divider
-
-    # ---- Ввод API-ключа (скрытый) ----
-    while true; do
-      echo -e "   ${BOLD}${WHITE}Вставьте API-ключ opencode.ai и нажмите Enter:${NC}"
-      echo -e "   ${DIM}(при вводе ничего отображаться не будет — это нормально)${NC}"
-      read -rs API_KEY
-      echo ""
-
-      if [[ -z "$API_KEY" ]]; then
-        warn "Ключ пустой. Попробуйте ещё раз или Ctrl+C для выхода."
-        continue
-      fi
-
-      if [[ ! "$API_KEY" =~ ^sk- ]]; then
-        warn "Ключ opencode.ai обычно начинается с 'sk-'. Проверьте, что скопировали правильный."
-        echo -e "   ${DIM}Продолжить всё равно? [y/n]${NC}"
-        read -r force_key
-        [[ "$force_key" != "y" && "$force_key" != "Y" ]] && continue
-      fi
-
-      break
-    done
-
-    echo -e "   ${GREEN}✓ Ключ получен (${#API_KEY} символов)${NC}"
-    echo ""
-
-    # ---- Создаём auth-profiles.json для main-агента ----
-    explain "Создаю конфигурацию OpenClaw..."
-
-    AUTH_DIR="$HOME/.openclaw/agents/main/agent"
-    mkdir -p "$AUTH_DIR"
-    AUTH_FILE="$AUTH_DIR/auth-profiles.json"
-
-    cat > "$AUTH_FILE" <<AUTHEOF
-{
-  "version": 1,
-  "profiles": {
-    "opencode-go:default": {
-      "type": "api_key",
-      "provider": "opencode-go",
-      "key": "$API_KEY"
-    }
-  },
-  "lastGood": {
-    "opencode": "opencode-go:default"
-  }
-}
-AUTHEOF
-    chmod 600 "$AUTH_FILE"
-    echo -e "   ${GREEN}✓${NC} API-ключ сохранён"
-
-    # Забываем ключ из переменной окружения. До этого момента он был нужен
-    # только для записи в auth-profiles.json; держать его в памяти процесса
-    # дальше — лишний риск (debug-bundle может попробовать выкачать env).
-    unset API_KEY
-
-    # Устанавливаем модель по умолчанию (|| true — чтобы не убить скрипт)
-    if openclaw config set agents.defaults.model.primary "$MODEL" &>/dev/null; then
-      echo -e "   ${GREEN}✓${NC} Модель по умолчанию: ${MODEL}"
-    fi
+      "Никаких ключей и моделей на этом шаге — всё это после установки."
 
     # КРИТИЧНО: ставим gateway.mode=local ДО gateway install/start
     # (иначе gateway поднимется в непонятном режиме и закроется с 1006)
@@ -3708,7 +3619,8 @@ echo ""
 # Pre-flight: ловим рассинхронизацию model у default vs agents.list[*]
 # до того как пользователь напишет боту и увидит «Model is disabled».
 if [[ "$DRY_RUN" != true ]]; then
-  ensure_model_consistency "opencode-go/deepseek-v4-flash" || true
+  _cur_model="$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\" \n')"
+  [[ -n "$_cur_model" ]] && ensure_model_consistency "$_cur_model" || true
 fi
 
 if [[ "$DRY_RUN" == true ]]; then
@@ -3798,6 +3710,21 @@ else
   if [[ "${TELEGRAM_CONNECTED:-false}" == true ]]; then
     echo -e "   ${GREEN}✓${NC} Telegram: @${BOT_USERNAME:-бот подключён}"
   fi
+  # Модель не подключена (свежая установка без ключей) → рекомендация
+  if [[ ! -f "$HOME/.openclaw/agents/main/agent/auth-profiles.json" ]] \
+     && ! python3 - "$HOME/.openclaw/openclaw.json" <<'PYEOF' 2>/dev/null
+import json,sys
+d=json.load(open(sys.argv[1]))
+p=(d.get("auth") or {}).get("profiles") or {}
+sys.exit(0 if p else 1)
+PYEOF
+  then
+    echo ""
+    echo -e "   ${BOLD}${YELLOW}🧠 Остался один шаг — выбрать модель (мозги).${NC}"
+    echo -e "   ${DIM}Бот уже в Telegram, отвечать начнёт после подключения модели:${NC}"
+    echo -e "   ${GREEN}openclaw-add-codex${NC} ${DIM}— ChatGPT (GPT-5.5), вход в браузере, 1 минута${NC}"
+    echo -e "   ${GREEN}openclaw models auth login --provider <имя>${NC} ${DIM}— любой другой провайдер${NC}"
+  fi
   echo ""
 
   # ─── Живой end-to-end тест: пусть клиент напишет боту ──────────
@@ -3836,13 +3763,7 @@ else
       echo -e "      ${DIM}Если увидите код — отправьте его в саппорт или нейрокуратору.${NC}"
     fi
 
-    CURRENT_MODEL_CHECK=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ')
-    if [[ "$CURRENT_MODEL_CHECK" == *"-free" || "$CURRENT_MODEL_CHECK" == "opencode-go/deepseek-v4-flash" ]]; then
-      echo -e "   ${GREEN}✓${NC} Модель: ${CURRENT_MODEL_CHECK} (бесплатная)"
-    else
-      echo -e "   ${YELLOW}○${NC} Модель: ${CURRENT_MODEL_CHECK:-не задана}"
-      echo -e "      ${DIM}Если бот просит оплату — верните бесплатную модель через openclaw-switch-model.${NC}"
-    fi
+    : # печать модели в финале убрана (решение Антона 2026-06-11)
     echo ""
   fi
 
