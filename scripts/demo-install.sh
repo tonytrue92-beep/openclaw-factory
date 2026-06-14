@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.12"
+INSTALLER_VERSION="2026.06.14"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -649,6 +649,19 @@ _fetch_agents_installer() {
   local repo="tonytrue92-beep/openclaw-agents-pack"
   local base="https://github.com/${repo}"
   local tmp; tmp="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-$$.sh")"
+
+  # 0) IP-gated gateway (если задан IP_BASE) — приоритетный источник
+  if [[ -n "$IP_BASE" ]]; then
+    if curl -fsSL --max-time 45 -H "Authorization: Bearer $(_ip_token)" \
+         "${IP_BASE%/}/installers/agents.sh" -o "$tmp" 2>/dev/null \
+         && head -1 "$tmp" 2>/dev/null | grep -q '^#!'; then
+      printf 'bash %q' "$tmp"; return 0
+    fi
+    # gateway задан, но не отдал — не падаем в публичный github (репо может
+    # быть private); вернём ошибку, чейн покажет диагностику.
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
 
   # 1) обычный путь — releases/latest/download
   if curl -fsSL --max-time 45 "${base}/releases/latest/download/install-agents-bundled.sh" -o "$tmp" 2>/dev/null \
@@ -3548,10 +3561,26 @@ REAUTH_PATH="$HELPER_DIR/openclaw-factory-reauth"
 mkdir -p "$HELPER_DIR"
 
 # Скачиваем оба helper'а из репы. Helpers лежат рядом в одной директории.
+# ─── IP-доставка (token-gated, 2026-06-14) ───────────────────────
+# IP_BASE пуст → публичный github (как сейчас). Задан → gateway, Authorization
+# шлём ТОЛЬКО туда (github raw на чужой Bearer = 404). При чейне agents-pack
+# IP_BASE наследуется дочерним установщиком (тот же процесс).
+IP_BASE="${IP_BASE:-}"; [[ -n "$IP_BASE" ]] && export IP_BASE
+_ip_token() {
+  printf '%s' "${COURSE_TOKEN:-$(cat "$HOME/.openclaw/course-token" 2>/dev/null || true)}"
+}
+ip_dl() {  # $1=путь под /assets/  $2=github-url  $3=dest
+  if [[ -n "$IP_BASE" ]]; then
+    curl -fsSL --max-time 20 -H "Authorization: Bearer $(_ip_token)" "${IP_BASE%/}/assets/$1" -o "$3" 2>/dev/null
+  else
+    curl -fsSL --max-time 20 "$2" -o "$3" 2>/dev/null
+  fi
+}
+
 HELPERS_BASE="https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts"
 
 # 1. switch-model — быстрая смена модели
-if curl -fsSL "${HELPERS_BASE}/openclaw-switch-model.sh" -o "$HELPER_PATH" 2>/dev/null; then
+if ip_dl "openclaw-factory/scripts/openclaw-switch-model.sh" "${HELPERS_BASE}/openclaw-switch-model.sh" "$HELPER_PATH"; then
   chmod +x "$HELPER_PATH"
   echo -e "   ${GREEN}✓${NC} Установлен: ${HELPER_PATH}"
 else
@@ -3561,7 +3590,7 @@ fi
 
 # 2. factory-reauth — перезапись API-ключа (кейс Саввы из отчёта куратора).
 # Ставим ровно так же, чтобы ~/.openclaw/bin уже был в PATH после switch-model.
-if curl -fsSL "${HELPERS_BASE}/openclaw-factory-reauth.sh" -o "$REAUTH_PATH" 2>/dev/null; then
+if ip_dl "openclaw-factory/scripts/openclaw-factory-reauth.sh" "${HELPERS_BASE}/openclaw-factory-reauth.sh" "$REAUTH_PATH"; then
   chmod +x "$REAUTH_PATH"
   echo -e "   ${GREEN}✓${NC} Установлен: ${REAUTH_PATH}"
 else
@@ -3570,7 +3599,7 @@ fi
 
 # 3. add-codex — умные мозги через ChatGPT (Codex) одной командой (опционально)
 ADDCODEX_PATH="$HELPER_DIR/openclaw-add-codex"
-if curl -fsSL "${HELPERS_BASE}/openclaw-add-codex.sh" -o "$ADDCODEX_PATH" 2>/dev/null; then
+if ip_dl "openclaw-factory/scripts/openclaw-add-codex.sh" "${HELPERS_BASE}/openclaw-add-codex.sh" "$ADDCODEX_PATH"; then
   chmod +x "$ADDCODEX_PATH"
   echo -e "   ${GREEN}✓${NC} Установлен: ${ADDCODEX_PATH}"
   echo -e "      ${DIM}умные мозги (ChatGPT): запусти ${BOLD}openclaw-add-codex${NC}${DIM} когда захочешь${NC}"

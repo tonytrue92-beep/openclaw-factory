@@ -207,3 +207,10 @@ grep -qE '^\s+echo -e .*Демо.*— посмотреть процесс' scrip
   && { echo "FAIL: пункт «Демо» всё ещё в меню"; exit 1; }
 echo "OK: главное меню — 3 пункта (установка / агенты / VPS)"
 
+# ─── IP-gated доставка (2026-06-14) ───
+grep -q 'ip_dl()' scripts/demo-install.sh || { echo "FAIL: ip_dl нет в factory"; exit 1; }
+grep -q 'IP_BASE="${IP_BASE:-}"; \[\[ -n "$IP_BASE" \]\] && export IP_BASE' scripts/demo-install.sh || { echo "FAIL: IP_BASE не экспортится в чейн"; exit 1; }
+grep -q 'installers/agents.sh" -o "$tmp"' scripts/demo-install.sh || { echo "FAIL: agents-fetch без gateway-ветки"; exit 1; }
+grep -qE 'curl -fsSL --max-time 20 "\$2" -o "\$3"' scripts/demo-install.sh || { echo "FAIL: github-ветка ip_dl не чистая"; exit 1; }
+echo "OK: factory ip_dl шов + чейн наследует IP_BASE + agents через gateway"
+
