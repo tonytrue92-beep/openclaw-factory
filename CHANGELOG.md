@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-06-15 — VPS-команда и fallback'ы через gateway (private-репо)
+
+- `show_vps_guide` (пункт «VPS 24/7») печатал мёртвую `raw.githubusercontent…/
+  demo-install.sh --vps` → 404 после приватизации репо. Заменено на gateway-
+  команду (IP_BASE + Authorization + --vps) и подсказку «команда из @AITeamVIPBot».
+- Два fallback'а (option-2 и сорванный чейн) указывали на `releases/latest/
+  download/install-agents-bundled.sh` (тоже 404 на private) → заменены на
+  «повтори команду из бота, она доустановит недостающее».
+
 ## 2026-06-12 — По фидбеку дня
 
 - Фикс `AGENT_ID: unbound` при пропуске R5 (повторный запуск).

@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.14"
+INSTALLER_VERSION="2026.06.15"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -1474,12 +1474,14 @@ show_vps_guide() {
   divider
   echo -e "${BOLD}${WHITE}3. Запустите установку на VPS${NC}"
   echo ""
-  echo -e "   ${DIM}┌─ 📋 скопируйте эту команду (без \$) ─────────────────────────────┐${NC}"
-  echo -e "   ${DIM}│${NC} ${YELLOW}\$${NC} ${GREEN}${BOLD}bash <(curl -fsSL https://raw.githubusercontent.com/${NC}"
-  echo -e "   ${DIM}│${NC}   ${GREEN}${BOLD}tonytrue92-beep/openclaw-factory/main/scripts/${NC}"
-  echo -e "   ${DIM}│${NC}   ${GREEN}${BOLD}demo-install.sh) --vps --install${NC}"
-  echo -e "   ${DIM}└──────────────────────────────────────────────────────────────────┘${NC}"
+  echo -e "   ${DIM}Возьмите команду из ${BOLD}@AITeamVIPBot${NC}${DIM} (она с вашим токеном) и впишите свой${NC}"
+  echo -e "   ${DIM}токен вместо ${BOLD}<ТОКЕН>${NC}${DIM} — установка пойдёт через защищённый сервер:${NC}"
   echo ""
+  echo -e "   ${GREEN}${BOLD}COURSE_TOKEN=<ТОКЕН> IP_BASE=https://api.tonytrue.pro/ip bash -c 'bash <(curl${NC}"
+  echo -e "   ${GREEN}${BOLD}-fsSL --connect-timeout 15 --retry 3 -H \"Authorization: Bearer \$COURSE_TOKEN\"${NC}"
+  echo -e "   ${GREEN}${BOLD}\"\$IP_BASE/installers/factory.sh\") --course-token \"\$COURSE_TOKEN\" --vps'${NC}"
+  echo ""
+  echo -e "   ${DIM}Не уверены — попросите у ${BOLD}@AITeamVIPBot${NC}${DIM} «команду для VPS».${NC}"
   echo -e "   ${DIM}Дальше установщик попросит токен Telegram-бота и ваш Telegram ID.${NC}"
   echo -e "   ${DIM}Через 3–5 минут бот будет отвечать в Telegram.${NC}"
   echo ""
@@ -2028,8 +2030,9 @@ LOGO
         eval "$_agents_run"
         exit $?
       else
-        warn "Не смог скачать установщик агентов (сеть/GitHub). Запустите вручную:"
-        echo -e "   ${GREEN}bash <(curl -fsSL https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh)${NC}"
+        warn "Не смог скачать установщик агентов (сеть к серверу доставки)."
+        echo -e "   ${DIM}Запусти ту же команду из ${BOLD}@AITeamVIPBot${NC}${DIM} ещё раз — она доустановит недостающее.${NC}"
+        echo -e "   ${DIM}Если повторяется — проверь интернет/VPN (наш сервер в РФ, с VPN бывает не достучаться).${NC}"
         exit 1
       fi
       ;;
@@ -3915,10 +3918,8 @@ PYEOF
       else
         warn "Движок установлен и работает, но установщик агентов завершился с ошибкой — причина в сообщении ВЫШЕ."
       fi
-      echo -e "   ${DIM}Доустанови команду агентов вручную (в новом терминале), любым способом:${NC}"
-      echo -e "      ${GREEN}bash <(curl -fsSL https://github.com/tonytrue92-beep/openclaw-agents-pack/releases/latest/download/install-agents-bundled.sh)${NC}"
-      echo -e "   ${DIM}   если GitHub отдаёт 504 — через git:${NC}"
-      echo -e "      ${GREEN}git clone https://github.com/tonytrue92-beep/openclaw-agents-pack && bash openclaw-agents-pack/scripts/install-agents.sh${NC}"
+      echo -e "   ${DIM}Доустанови позже — просто запусти ту же команду из ${BOLD}@AITeamVIPBot${NC}${DIM} ещё раз${NC}"
+      echo -e "   ${DIM}(она увидит уже поставленный движок и доустановит недостающих агентов).${NC}"
       echo ""
     fi
     unset _tier_label _chain_ok _chain_fail _agents_run
