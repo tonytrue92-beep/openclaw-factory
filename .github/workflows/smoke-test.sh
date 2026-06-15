@@ -214,3 +214,12 @@ grep -q 'installers/agents.sh" -o "$tmp"' scripts/demo-install.sh || { echo "FAI
 grep -qE 'curl -fsSL --max-time 20 "\$2" -o "\$3"' scripts/demo-install.sh || { echo "FAIL: github-ветка ip_dl не чистая"; exit 1; }
 echo "OK: factory ip_dl шов + чейн наследует IP_BASE + agents через gateway"
 
+# ─── VPS-команда и fallback'ы не должны быть мёртвыми raw/release (private) ───
+if grep -A60 '^show_vps_guide()' scripts/demo-install.sh | grep -q 'raw.githubusercontent.*demo-install'; then
+  echo "FAIL: show_vps_guide печатает мёртвую raw-команду"; exit 1; fi
+grep -A60 '^show_vps_guide()' scripts/demo-install.sh | grep -q 'IP_BASE=https://api.tonytrue.pro/ip' \
+  || { echo "FAIL: VPS-гайд без gateway-команды"; exit 1; }
+grep -qE 'echo.*releases/latest/download/install-agents-bundled' scripts/demo-install.sh \
+  && { echo "FAIL: остался печатаемый мёртвый release-fallback"; exit 1; }
+echo "OK: VPS-команда и fallback'ы — через gateway/бота (не мёртвый raw)"
+
