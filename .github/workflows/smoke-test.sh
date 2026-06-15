@@ -223,3 +223,7 @@ grep -qE 'echo.*releases/latest/download/install-agents-bundled' scripts/demo-in
   && { echo "FAIL: остался печатаемый мёртвый release-fallback"; exit 1; }
 echo "OK: VPS-команда и fallback'ы — через gateway/бота (не мёртвый raw)"
 
+# ─── Плейсхолдер токена без угловых скобок (иначе gateway 401) ───
+grep -qE 'COURSE_TOKEN=<' scripts/demo-install.sh && { echo "FAIL: <ТОКЕН> в скобках — клиент оставит скобки → 401"; exit 1; }
+echo "OK: плейсхолдер токена без угловых скобок"
+
