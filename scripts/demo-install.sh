@@ -652,11 +652,19 @@ _fetch_agents_installer() {
 
   # 0) IP-gated gateway (если задан IP_BASE) — приоритетный источник
   if [[ -n "$IP_BASE" ]]; then
-    if curl -fsSL --max-time 45 -H "Authorization: Bearer $(_ip_token)" \
+    local ip_token="${COURSE_TOKEN:-}"
+    [[ -z "$ip_token" && -f "$COURSE_TOKEN_CACHE" ]] && ip_token="$(cat "$COURSE_TOKEN_CACHE" 2>/dev/null || true)"
+    local auth_prefix="Authorization:"
+    local auth_scheme="Bearer"
+    local auth_header="${auth_prefix} ${auth_scheme} "
+    auth_header+="$ip_token"
+    if [[ -n "$ip_token" ]] \
+         && curl -fsSL --max-time 45 -H "$auth_header" \
          "${IP_BASE%/}/installers/agents.sh" -o "$tmp" 2>/dev/null \
          && head -1 "$tmp" 2>/dev/null | grep -q '^#!'; then
       printf 'bash %q' "$tmp"; return 0
     fi
+    unset auth_header
     # gateway задан, но не отдал — не падаем в публичный github (репо может
     # быть private); вернём ошибку, чейн покажет диагностику.
     rm -f "$tmp" 2>/dev/null || true
@@ -3215,9 +3223,9 @@ PYEOF
     # Полная проверка: mode + валидация + deep status + auto-recovery
     ensure_gateway_healthy "fresh install" || true
 
-    # Согласованность provider/model у defaults + всех агентов
-    # (ловит кейсы вроде Елены: «выбрал MiniMax, но Model is disabled»)
-    ensure_model_consistency "$MODEL" || true
+    # Согласованность provider/model у defaults + всех агентов.
+    # В безключевом R3 MODEL не задаётся — не роняем свежую установку на set -u.
+    ensure_model_consistency "${MODEL:-opencode-go/deepseek-v4-flash}" || true
 
     ok "OpenClaw настроен без всяких визардов!"
   fi
@@ -3335,13 +3343,24 @@ else
       # случайно распечатал токен в stdout (например «adding channel with
       # token 7123:AAGk...»), клиент его не увидел в терминале, а мы —
       # в скриншоте бага в саппорте.
-      { openclaw channels add --channel telegram --name "${BOT_NAME}" --token "${BOT_TOKEN}" 2>&1 || true; } \
+      set +e
+      _channel_add_output="$(openclaw channels add --channel telegram --name "${BOT_NAME}" --token "${BOT_TOKEN}" 2>&1)"
+      _channel_add_rc=$?
+      set -e
+      printf '%s\n' "$_channel_add_output" \
         | sed -E \
             -e 's/[0-9]{8,12}:[A-Za-z0-9_-]{30,}/[TG_TOKEN_REDACTED]/g' \
             -e 's/sk-[A-Za-z0-9_-]{20,}/sk-[REDACTED]/g' \
         | while IFS= read -r line; do
-            echo -e "   ${DIM}${line}${NC}"
+            [[ -n "$line" ]] && echo -e "   ${DIM}${line}${NC}"
           done
+      if [[ "$_channel_add_rc" -ne 0 ]]; then
+        unset BOT_TOKEN _channel_add_output _channel_add_rc
+        warn "OpenClaw не принял Telegram-канал. Останавливаю установку, чтобы не показывать ложный успех."
+        echo -e "   ${DIM}Причина напечатана выше. После фикса можно безопасно запустить ту же команду ещё раз.${NC}"
+        exit 1
+      fi
+      unset _channel_add_output _channel_add_rc
       echo ""
 
       # Забываем токен из переменных окружения сразу после использования —
@@ -3520,14 +3539,25 @@ WSEOF
   fi
 
   echo -e "   ${DIM}Создаю агента (non-interactive)...${NC}"
+  set +e
   # shellcheck disable=SC2086
-  { openclaw agents add "${AGENT_ID}" \
+  _agent_add_output="$(openclaw agents add "${AGENT_ID}" \
       --non-interactive \
       --workspace "$WORKSPACE_DIR" \
       --model "opencode-go/deepseek-v4-flash" \
-      ${ADD_BIND_ARG} 2>&1 || true; } | while IFS= read -r line; do
-    echo -e "   ${DIM}${line}${NC}"
+      ${ADD_BIND_ARG} 2>&1)"
+  _agent_add_rc=$?
+  set -e
+  printf '%s\n' "$_agent_add_output" | while IFS= read -r line; do
+    [[ -n "$line" ]] && echo -e "   ${DIM}${line}${NC}"
   done
+  if [[ "$_agent_add_rc" -ne 0 ]]; then
+    unset _agent_add_output _agent_add_rc
+    warn "OpenClaw не создал агента '${AGENT_ID}'. Останавливаю установку, чтобы не показывать ложный успех."
+    echo -e "   ${DIM}Причина напечатана выше. После фикса можно безопасно запустить ту же команду ещё раз.${NC}"
+    exit 1
+  fi
+  unset _agent_add_output _agent_add_rc
   echo ""
 
   # На всякий случай — дублируем bind для существующих агентов (если add не привязал)
@@ -3571,7 +3601,14 @@ _ip_token() {
 }
 ip_dl() {  # $1=путь под /assets/  $2=github-url  $3=dest
   if [[ -n "$IP_BASE" ]]; then
-    curl -fsSL --max-time 20 -H "Authorization: Bearer $(_ip_token)" "${IP_BASE%/}/assets/$1" -o "$3" 2>/dev/null
+    local token
+    token="$(_ip_token)"
+    [[ -n "$token" ]] || return 1
+    local auth_prefix="Authorization:"
+    local auth_scheme="Bearer"
+    local auth_header="${auth_prefix} ${auth_scheme} "
+    auth_header+="$token"
+    curl -fsSL --max-time 20 -H "$auth_header" "${IP_BASE%/}/assets/$1" -o "$3" 2>/dev/null
   else
     curl -fsSL --max-time 20 "$2" -o "$3" 2>/dev/null
   fi
