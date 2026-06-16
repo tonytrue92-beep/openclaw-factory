@@ -240,3 +240,9 @@ _fl=$(grep -n '_fetch_agents_installer()' scripts/demo-install.sh | head -1 | cu
 [ -n "$_dl" ] && [ "$_dl" -lt "$_fl" ] || { echo "FAIL: IP_BASE не объявлен до _fetch_agents_installer (set -u unbound)"; exit 1; }
 echo "OK: IP_BASE объявлен рано (строка $_dl < $_fl) — нет unbound в чейне"
 
+# ─── gateway.auth.mode none на loopback (OpenClaw 2026.6.6 device-identity) ───
+grep -q 'gateway.auth.mode none' scripts/demo-install.sh || { echo "FAIL: не выключаем gateway auth (device identity required)"; exit 1; }
+# должно стоять и в ensure_gateway_healthy, и в R2 (>=2 раза)
+[ "$(grep -c 'gateway.auth.mode none' scripts/demo-install.sh)" -ge 2 ] || { echo "FAIL: auth=none не во всех путях gateway-setup"; exit 1; }
+echo "OK: gateway.auth.mode none на loopback (фикс device identity required 2026.6.6)"
+
