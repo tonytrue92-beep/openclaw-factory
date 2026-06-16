@@ -220,9 +220,14 @@ grep -qE 'curl -fsSL --max-time 20 "\$2" -o "\$3"' scripts/demo-install.sh || { 
 echo "OK: factory ip_dl шов + чейн наследует IP_BASE + agents через gateway"
 
 # ─── VPS-команда и fallback'ы не должны быть мёртвыми raw/release (private) ───
-if grep -A60 '^show_vps_guide()' scripts/demo-install.sh | grep -q 'raw.githubusercontent.*demo-install'; then
-  echo "FAIL: show_vps_guide печатает мёртвую raw-команду"; exit 1; fi
-grep -A60 '^show_vps_guide()' scripts/demo-install.sh | grep -q 'IP_BASE=https://api.tonytrue.pro/ip' \
+# busybox grep (alpine CI) не поддерживает context-флаг -A → пустой блок → ложный
+# FAIL (хронически красная alpine-джоба). Тело функции извлекаем через awk
+# (портабельно gawk/busybox-awk/BSD-awk), матчим через awk index() — без grep
+# regex/локали на строке с кириллицей ВАШ_ТОКЕН.
+_vps_body=$(awk '/^show_vps_guide\(\)/{c=1} c&&c++<=61' scripts/demo-install.sh)
+printf '%s\n' "$_vps_body" | awk 'index($0,"raw.githubusercontent")&&index($0,"demo-install"){exit 1}' \
+  || { echo "FAIL: show_vps_guide печатает мёртвую raw-команду"; exit 1; }
+printf '%s\n' "$_vps_body" | awk 'index($0,"IP_BASE=https://api.tonytrue.pro/ip"){f=1} END{exit !f}' \
   || { echo "FAIL: VPS-гайд без gateway-команды"; exit 1; }
 grep -qE 'echo.*releases/latest/download/install-agents-bundled' scripts/demo-install.sh \
   && { echo "FAIL: остался печатаемый мёртвый release-fallback"; exit 1; }
@@ -256,8 +261,11 @@ echo "OK: gateway.auth.mode none на loopback (фикс device identity require
 # при «Полном сбросе» кэш ~/.openclaw/course-token снесён → _ip_token пуст →
 # gateway 401 → ложная ошибка «не смог скачать lib/ui.sh с GitHub raw».
 grep -q '^export COURSE_TOKEN' scripts/demo-install.sh || { echo "FAIL: COURSE_TOKEN не экспортирован — чейн agents.sh не получит токен после полного сброса"; exit 1; }
-_ex=$(grep -n '^export COURSE_TOKEN' scripts/demo-install.sh | head -1 | cut -d: -f1)
-_ch=$(grep -n 'eval "\$_agents_run"' scripts/demo-install.sh | head -1 | cut -d: -f1)
+# grep -m1: останавливаемся на первом матче. БЕЗ -m1 `eval "$_agents_run"` (2 шт)
+# + `| head -1` рвёт пайп → grep ловит SIGPIPE → под pipefail+set -e тихий abort
+# (busybox/Linux; на macOS BSD grep успевает дозаписать). -F: фикс-строка с $.
+_ex=$(grep -nm1 '^export COURSE_TOKEN' scripts/demo-install.sh | cut -d: -f1)
+_ch=$(grep -nFm1 'eval "$_agents_run"' scripts/demo-install.sh | cut -d: -f1)
 [ -n "$_ex" ] && [ -n "$_ch" ] && [ "$_ex" -lt "$_ch" ] || { echo "FAIL: export COURSE_TOKEN после запуска чейна — токен не успеет пробросится"; exit 1; }
 echo "OK: COURSE_TOKEN экспортирован (строка $_ex < $_ch) — чейн agents.sh наследует токен даже после полного сброса"
 
@@ -266,6 +274,6 @@ echo "OK: COURSE_TOKEN экспортирован (строка $_ex < $_ch) —
 # Ставим конкретную версию из OPENCLAW_VERSION; бамп — вручную.
 grep -q '^OPENCLAW_VERSION=' scripts/demo-install.sh || { echo "FAIL: нет пина OPENCLAW_VERSION — вернулись на плавающую версию"; exit 1; }
 grep -q 'npm install -g openclaw@latest' scripts/demo-install.sh && { echo "FAIL: остался openclaw@latest — апстрим снова будет ломать клиентов"; exit 1; }
-grep -q 'npm install -g openclaw@\${OPENCLAW_VERSION}' scripts/demo-install.sh || { echo "FAIL: реальная установка не через пин OPENCLAW_VERSION"; exit 1; }
+grep -qF 'npm install -g openclaw@${OPENCLAW_VERSION}' scripts/demo-install.sh || { echo "FAIL: реальная установка не через пин OPENCLAW_VERSION"; exit 1; }
 echo "OK: OpenClaw запинен ($(grep -m1 '^OPENCLAW_VERSION=' scripts/demo-install.sh)) — не @latest"
 
