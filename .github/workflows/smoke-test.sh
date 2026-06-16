@@ -19,6 +19,11 @@ SMOKE=/tmp/openclaw-smoke-body.sh
 #    referencing COLLECT_DEBUG_ONLY and must not be sourced in tests.
 awk '/^typewrite\(\) \{/{capture=1} /--collect-debug: ручной сбор bundle/{exit} capture' "$INSTALLER" > "$FUNCS"
 
+# OPENCLAW_VERSION (пин движка) объявлен на верхнем уровне ВЫШЕ typewrite() —
+# awk его не захватывает. Инжектим реальную декларацию из установщика, иначе
+# функции с `openclaw@${OPENCLAW_VERSION}` падают под set -u в тестах.
+grep -m1 '^OPENCLAW_VERSION=' "$INSTALLER" >> "$FUNCS"
+
 # 2. Build smoke-test body
 cat > "$SMOKE" <<'BODY'
 #!/usr/bin/env bash
@@ -255,4 +260,12 @@ _ex=$(grep -n '^export COURSE_TOKEN' scripts/demo-install.sh | head -1 | cut -d:
 _ch=$(grep -n 'eval "\$_agents_run"' scripts/demo-install.sh | head -1 | cut -d: -f1)
 [ -n "$_ex" ] && [ -n "$_ch" ] && [ "$_ex" -lt "$_ch" ] || { echo "FAIL: export COURSE_TOKEN после запуска чейна — токен не успеет пробросится"; exit 1; }
 echo "OK: COURSE_TOKEN экспортирован (строка $_ex < $_ch) — чейн agents.sh наследует токен даже после полного сброса"
+
+# ─── ПИН версии OpenClaw: НЕ @latest (2026-06-16) ───
+# Апстрим @latest ломал клиентов (2026.6.6 device-identity; opencode-go rename).
+# Ставим конкретную версию из OPENCLAW_VERSION; бамп — вручную.
+grep -q '^OPENCLAW_VERSION=' scripts/demo-install.sh || { echo "FAIL: нет пина OPENCLAW_VERSION — вернулись на плавающую версию"; exit 1; }
+grep -q 'npm install -g openclaw@latest' scripts/demo-install.sh && { echo "FAIL: остался openclaw@latest — апстрим снова будет ломать клиентов"; exit 1; }
+grep -q 'npm install -g openclaw@\${OPENCLAW_VERSION}' scripts/demo-install.sh || { echo "FAIL: реальная установка не через пин OPENCLAW_VERSION"; exit 1; }
+echo "OK: OpenClaw запинен ($(grep -m1 '^OPENCLAW_VERSION=' scripts/demo-install.sh)) — не @latest"
 

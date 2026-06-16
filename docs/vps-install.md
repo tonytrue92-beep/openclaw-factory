@@ -332,7 +332,7 @@ openclaw-switch-model
 Пока вручную, по SSH:
 
 ```bash
-npm install -g openclaw@latest
+npm install -g openclaw@2026.6.6
 openclaw gateway restart
 ```
 
