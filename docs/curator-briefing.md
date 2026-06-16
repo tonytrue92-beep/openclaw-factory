@@ -71,7 +71,7 @@ OpenClaw — AI-шлюз, который соединяет мессенджер
 ### Фаза 3. Реальная установка (R0–R6) — пункт 1
 
 - **R1 — System Check**: проверка Node.js/npm/Homebrew/OpenClaw. Автоустановка того, чего нет.
-- **R2 — Install OpenClaw**: `npm install -g openclaw@latest` с ретраями на 3 попытки при ETIMEDOUT.
+- **R2 — Install OpenClaw**: `npm install -g openclaw@2026.6.6` с ретраями на 3 попытки при ETIMEDOUT.
 - **R3 — Configuration** (НЕ onboard): провайдер фиксированный — **opencode.ai** (один ключ на все модели). Модель по умолчанию: `opencode/minimax-m2.5-free` (MiniMax M2.5 Free из раздела **OpenCode Zen**). Скрипт открывает `https://opencode.ai` в браузере и показывает клиенту 8-шаговую инструкцию: зарегистрироваться → выбрать провайдера **OpenCode** → раздел **OpenCode Zen** → модель **MiniMax M2.5 (Free)** → **API Keys** → создать ключ → скопировать. Ключ (формат `sk-...`) пишется в `~/.openclaw/agents/main/agent/auth-profiles.json` (chmod 600) как профиль `opencode:default`. Дополнительно скрипт ставит `agents.defaults.model.primary = opencode/minimax-m2.5-free` и `gateway.mode = local`, запускает gateway, прогоняет `ensure_gateway_healthy` (валидация + auto-recovery).
 - **R4 — Telegram Bot**: ввод токена от @BotFather → проверка через Telegram API → `openclaw channels add` → ввод Telegram user ID владельца → настройка allowlist.
 - **R5 — Create Agent**: создание агента + привязка к Telegram.
@@ -86,7 +86,7 @@ OpenClaw — AI-шлюз, который соединяет мессенджер
 | **Node.js 22 LTS** | через `nvm` (v0.39.7), без sudo | `~/.nvm/versions/node/v22.x/` |
 | **nvm в shell rc** | append в `~/.zshrc`, `~/.bashrc`, `~/.bash_profile` (блок помечен `openclaw-factory installer`) | — |
 | **Homebrew** (macOS) | официальный installer, `brew shellenv` в `~/.zprofile`, `~/.bash_profile` | `/opt/homebrew/` (Apple Silicon) или `/usr/local/` (Intel) |
-| **OpenClaw CLI** | `npm install -g openclaw@latest` с ретраями | глобальный npm prefix |
+| **OpenClaw CLI** | `npm install -g openclaw@2026.6.6` с ретраями | глобальный npm prefix |
 | **API-ключ opencode.ai** | запись в `~/.openclaw/agents/main/agent/auth-profiles.json` (chmod 600) как профиль `opencode:default` с `type: api_key`, `provider: opencode`, `key: sk-...` | доп. env-переменные не используются |
 | **Gateway-сервис** | `openclaw gateway install` | macOS — LaunchAgent, Linux — systemd |
 | **Конфиг OpenClaw** | `openclaw config set ...` | `~/.openclaw/openclaw.json` (JSON5) |
@@ -133,7 +133,7 @@ grep -n "openclaw-factory installer" ~/.zshrc
 ```
 curl -I https://registry.npmjs.org/openclaw     # проверить доступность
 npm config set registry https://registry.npmjs.org/
-npm install -g openclaw@latest
+npm install -g openclaw@2026.6.6
 ```
 
 Если регион блокирует npm — включить VPN или сменить DNS на `1.1.1.1`.
@@ -240,8 +240,8 @@ openclaw gateway restart
 **Причина:** пользователь скопировал знак `$` вместе с командой. `$` — это не часть команды, а просто значок терминала (prompt).
 
 **Решение:** копировать команду без `$`. Пример:
-- ❌ Неправильно: `$ npm install -g openclaw@latest`
-- ✅ Правильно: `npm install -g openclaw@latest`
+- ❌ Неправильно: `$ npm install -g openclaw@2026.6.6`
+- ✅ Правильно: `npm install -g openclaw@2026.6.6`
 
 Наш скрипт показывает команды в рамке с пометкой «📋 скопируйте эту команду (без $)».
 

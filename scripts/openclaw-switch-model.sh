@@ -102,7 +102,7 @@ case "${1:-}" in
     ;;
 esac
 
-command -v openclaw >/dev/null || die "openclaw не найден в PATH. Поставьте: npm install -g openclaw@latest"
+command -v openclaw >/dev/null || die "openclaw не найден в PATH. Поставьте: npm install -g openclaw@2026.6.6"
 
 # ─── Текущая модель ─────────────────────────────────────────────────────
 CURRENT=$(openclaw config get agents.defaults.model.primary 2>/dev/null | tr -d '\n" ' || echo "")
