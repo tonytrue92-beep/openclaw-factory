@@ -1838,6 +1838,12 @@ ensure_gateway_healthy() {
     fi
   fi
 
+  # OpenClaw 2026.6.6: gateway по умолчанию auth.mode=token и требует device
+  # identity → CLI и агенты не могут достучаться («device identity required»),
+  # особенно после полного сброса. На loopback-gateway (127.0.0.1) выключаем
+  # auth — это безопасно (доступ только у локальных процессов).
+  openclaw config set gateway.auth.mode none &>/dev/null || true
+
   # 2. Валидация конфига
   local validation
   validation=$(openclaw config validate 2>&1)
@@ -3230,6 +3236,8 @@ PYEOF
     if openclaw config set gateway.mode local &>/dev/null; then
       echo -e "   ${GREEN}✓${NC} Режим запуска настроен"
     fi
+    # 2026.6.6: на loopback-gateway выключаем auth (иначе «device identity required»)
+    openclaw config set gateway.auth.mode none &>/dev/null || true
 
     # Устанавливаем gateway как service (автозапуск) — всё с || true,
     # чтобы set -e не убил скрипт от лишней болтовни в stderr.
