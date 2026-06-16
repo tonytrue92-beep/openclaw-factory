@@ -246,3 +246,13 @@ grep -q 'gateway.auth.mode none' scripts/demo-install.sh || { echo "FAIL: не �
 [ "$(grep -c 'gateway.auth.mode none' scripts/demo-install.sh)" -ge 2 ] || { echo "FAIL: auth=none не во всех путях gateway-setup"; exit 1; }
 echo "OK: gateway.auth.mode none на loopback (фикс device identity required 2026.6.6)"
 
+# ─── COURSE_TOKEN экспортируется → чейн agents.sh наследует токен (2026-06-16) ───
+# Без export дочерний `eval "bash /tmp/agents.sh"` не видит токен через env;
+# при «Полном сбросе» кэш ~/.openclaw/course-token снесён → _ip_token пуст →
+# gateway 401 → ложная ошибка «не смог скачать lib/ui.sh с GitHub raw».
+grep -q '^export COURSE_TOKEN' scripts/demo-install.sh || { echo "FAIL: COURSE_TOKEN не экспортирован — чейн agents.sh не получит токен после полного сброса"; exit 1; }
+_ex=$(grep -n '^export COURSE_TOKEN' scripts/demo-install.sh | head -1 | cut -d: -f1)
+_ch=$(grep -n 'eval "\$_agents_run"' scripts/demo-install.sh | head -1 | cut -d: -f1)
+[ -n "$_ex" ] && [ -n "$_ch" ] && [ "$_ex" -lt "$_ch" ] || { echo "FAIL: export COURSE_TOKEN после запуска чейна — токен не успеет пробросится"; exit 1; }
+echo "OK: COURSE_TOKEN экспортирован (строка $_ex < $_ch) — чейн agents.sh наследует токен даже после полного сброса"
+

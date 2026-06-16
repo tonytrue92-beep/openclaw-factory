@@ -8,6 +8,24 @@
 
 ---
 
+## 2026-06-16 — Стабилизация чейна агентов через token-gated gateway
+
+### Fixed
+- **Чейн agents.sh не получал токен после «Полного сброса».** `COURSE_TOKEN`
+  был обычной shell-переменной (не `export`), поэтому дочерний
+  `eval "bash /tmp/agents.sh"` не видел его через env. При выборе «Полный
+  сброс» кэш `~/.openclaw/course-token` уезжал в backup → `_ip_token` в
+  дочернем процессе пуст → gateway отдавал 401 → ложная ошибка «не смог
+  скачать scripts/lib/ui.sh с GitHub raw». Теперь `export COURSE_TOKEN`
+  стоит рано (export-атрибут держится при всех последующих присваиваниях),
+  и чейн наследует токен через env независимо от кэша.
+- **R4 Telegram-валидация** (#31): ретраи `getMe` (1·2·3), отказ на неверный
+  токен (401), честное сообщение при сбое сети вместо заглушки `@my_bot`.
+- **IP_BASE unbound в чейне** (#32, set -u): объявлен рано, до
+  `_fetch_agents_installer`.
+- **device identity required** (OpenClaw 2026.6.6, #33): `gateway.auth.mode
+  none` на loopback в `ensure_gateway_healthy` и R2.
+
 ## 2026-06-15 — VPS-команда и fallback'ы через gateway (private-репо)
 
 - `show_vps_guide` (пункт «VPS 24/7») печатал мёртвую `raw.githubusercontent…/
