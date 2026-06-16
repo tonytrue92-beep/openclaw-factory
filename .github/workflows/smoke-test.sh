@@ -234,3 +234,9 @@ grep -q 'TG_TOKEN_VERIFIED' scripts/demo-install.sh || { echo "FAIL: нет фл
 grep -q 'BOT_USERNAME="my_bot"' scripts/demo-install.sh && { echo "FAIL: осталась заглушка @my_bot"; exit 1; }
 echo "OK: R4 — ретраи getMe, отказ на неверный токен, честное сообщение при сбое сети"
 
+# ─── IP_BASE объявлен ДО _fetch_agents_installer (set -u, 2026-06-16) ───
+_dl=$(grep -n 'IP_BASE="\${IP_BASE:-}"' scripts/demo-install.sh | head -1 | cut -d: -f1)
+_fl=$(grep -n '_fetch_agents_installer()' scripts/demo-install.sh | head -1 | cut -d: -f1)
+[ -n "$_dl" ] && [ "$_dl" -lt "$_fl" ] || { echo "FAIL: IP_BASE не объявлен до _fetch_agents_installer (set -u unbound)"; exit 1; }
+echo "OK: IP_BASE объявлен рано (строка $_dl < $_fl) — нет unbound в чейне"
+
