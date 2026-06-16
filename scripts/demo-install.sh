@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.15"
+INSTALLER_VERSION="2026.06.16"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # Если скрипт запущен из локального git-checkout (а не из curl|bash),
@@ -3356,17 +3356,39 @@ else
       echo ""
 
       echo -e "   ${DIM}Проверяю токен через Telegram API...${NC}"
-      BOT_INFO=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getMe" 2>/dev/null)
+      # Ретраи + таймаут: api.telegram.org в РФ/через VPN часто отвечает не
+      # с первого раза. Один curl без таймаута давал ложную заглушку @my_bot.
+      BOT_INFO=""
+      for _tg_try in 1 2 3; do
+        BOT_INFO=$(curl -s --max-time 10 "https://api.telegram.org/bot${BOT_TOKEN}/getMe" 2>/dev/null)
+        [[ -n "$BOT_INFO" ]] && break
+        sleep 2
+      done
 
+      TG_TOKEN_VERIFIED=false
       if echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['ok']" 2>/dev/null; then
+        TG_TOKEN_VERIFIED=true
         BOT_USERNAME=$(echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result']['username'])")
         BOT_NAME=$(echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['result']['first_name'])")
         echo -e "   ${GREEN}✓ Бот найден: ${BOLD}${BOT_NAME}${NC} ${GREEN}(@${BOT_USERNAME})${NC}"
         echo ""
+      elif echo "$BOT_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') is False and d.get('error_code')==401" 2>/dev/null; then
+        # Telegram ОТВЕТИЛ, но токен неверный — не делаем вид, что всё ок.
+        unset BOT_TOKEN BOT_INFO
+        warn "Telegram отклонил токен (401 Unauthorized) — он неверный или скопирован с опечаткой/пробелом."
+        echo -e "   ${DIM}Создай бота заново в ${BOLD}@BotFather${NC}${DIM} (/newbot), скопируй токен ЦЕЛИКОМ,${NC}"
+        echo -e "   ${DIM}и запусти ту же команду установки ещё раз.${NC}"
+        exit 1
       else
-        BOT_USERNAME="my_bot"
-        BOT_NAME="My Bot"
-        warn "Не удалось проверить токен (возможно, нет интернета). Продолжаем..."
+        # api.telegram.org не ответил (сеть/VPN). Токен сохраним, но честно
+        # предупредим: бот не заработает, пока OpenClaw не достучится до Telegram.
+        BOT_USERNAME=""
+        BOT_NAME="AI Bot"
+        warn "Telegram API (api.telegram.org) не ответил — имя бота не подтверждено."
+        echo -e "   ${BOLD}${YELLOW}   Это сеть до Telegram, не токен.${NC} Чаще всего мешает VPN."
+        echo -e "   ${DIM}   Бот заработает только когда OpenClaw сможет достучаться до Telegram:${NC}"
+        echo -e "   ${DIM}   если включён VPN — проверь, что он пропускает Telegram (или выключи),${NC}"
+        echo -e "   ${DIM}   затем ${GREEN}openclaw gateway restart${NC}${DIM} и напиши боту. Токен сохраняю.${NC}"
         echo ""
       fi
 
@@ -3401,7 +3423,11 @@ else
       unset BOT_TOKEN
 
       TELEGRAM_CONNECTED=true
-      ok "Telegram-бот @${BOT_USERNAME} подключён!"
+      if [[ "${TG_TOKEN_VERIFIED:-false}" == true ]]; then
+        ok "Telegram-бот @${BOT_USERNAME} подключён!"
+      else
+        ok "Telegram-токен сохранён (имя бота не проверено — Telegram API не ответил)."
+      fi
 
       # ────────────────────────────────────────────────────────────
       # ВАЖНО: настроить DM-политику, иначе бот ответит
