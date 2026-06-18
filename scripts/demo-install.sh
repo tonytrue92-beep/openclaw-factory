@@ -3686,6 +3686,10 @@ _ip_token() {
   printf '%s' "${COURSE_TOKEN:-$(cat "$HOME/.openclaw/course-token" 2>/dev/null || true)}"
 }
 ip_dl() {  # $1=путь под /assets/  $2=github-url  $3=dest
+  # 3 попытки с паузой: РФ-origin без CDN моргает (curl 28). Без ретраев один
+  # блип терял файл (хелперы/чейн). --connect-timeout 10: мёртвый коннект падает
+  # быстро. Совпадает с agents-pack ip_dl.
+  local _try _rc=1
   if [[ -n "$IP_BASE" ]]; then
     local token
     token="$(_ip_token)"
@@ -3694,10 +3698,17 @@ ip_dl() {  # $1=путь под /assets/  $2=github-url  $3=dest
     local auth_scheme="Bearer"
     local auth_header="${auth_prefix} ${auth_scheme} "
     auth_header+="$token"
-    curl -fsSL --max-time 20 -H "$auth_header" "${IP_BASE%/}/assets/$1" -o "$3" 2>/dev/null
+    for _try in 1 2 3; do
+      curl -fsSL --connect-timeout 10 --max-time 25 -H "$auth_header" "${IP_BASE%/}/assets/$1" -o "$3" 2>/dev/null && { _rc=0; break; }
+      [[ $_try -lt 3 ]] && sleep 2
+    done
   else
-    curl -fsSL --max-time 20 "$2" -o "$3" 2>/dev/null
+    for _try in 1 2 3; do
+      curl -fsSL --connect-timeout 10 --max-time 25 "$2" -o "$3" 2>/dev/null && { _rc=0; break; }
+      [[ $_try -lt 3 ]] && sleep 2
+    done
   fi
+  return $_rc
 }
 
 HELPERS_BASE="https://raw.githubusercontent.com/tonytrue92-beep/openclaw-factory/main/scripts"
