@@ -8,6 +8,20 @@
 
 ---
 
+## 2026-06-16 — git больше не просит GitHub-логин у клиентов
+
+### Fixed / Security
+- **Убран `git clone` fallback в `_fetch_agents_installer`** («последний рубеж»
+  после releases). Он остался с тех пор, когда репозитории были ПУБЛИЧНЫМИ. После
+  приватизации `git clone https://github.com/tonytrue92-beep/…` на приватный репо
+  интерактивно выводил **«Username for 'https://github.com':»** и зависал — клиенты
+  принимали это за требование «скинуть GitHub-логин» (фишинг-вид, никогда не мог
+  сработать: у клиента нет доступа). `>/dev/null 2>&1` промпт НЕ глушил (он идёт в
+  /dev/tty). Доставка остаётся: gateway → releases/latest → прямой тег.
+- **`export GIT_TERMINAL_PROMPT=0`** рано в demo-install.sh и openclaw-add-codex.sh:
+  git НИКОГДА не покажет интерактивный логин-промпт (любой git: npm-from-git,
+  плагин, случайный clone) — вместо зависания сразу падает. Наследуется чейном.
+
 ## 2026-06-16 — Стабилизация чейна агентов через token-gated gateway
 
 ### Changed

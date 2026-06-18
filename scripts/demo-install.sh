@@ -128,6 +128,13 @@ export COURSE_TOKEN
 # секции хелперов. Пусто → публичный github; задан (команда из бота) → gateway.
 IP_BASE="${IP_BASE:-}"; [[ -n "$IP_BASE" ]] && export IP_BASE
 
+# git НИКОГДА не должен интерактивно спрашивать логин/пароль. После приватизации
+# репозиториев любой git к github.com/tonytrue92-beep (clone/npm-from-git/плагин)
+# на приватный HTTPS-репо выводит «Username for 'https://github.com':» и зависает —
+# клиенты принимают это за фишинг и вводят свои GitHub-креды. =0 → git сразу
+# падает с ошибкой вместо промпта. Наследуется дочерним agents.sh и всеми git-вызовами.
+export GIT_TERMINAL_PROMPT=0
+
 # Остальные флаги (меняющие состояние) — после TTY-инициализации
 while [[ $# -gt 0 ]]; do
   arg="$1"
@@ -724,15 +731,10 @@ _fetch_agents_installer() {
     printf 'bash %q' "$tmp"; return 0
   fi
 
-  # 3) git clone (полный репо с lib/) — последний рубеж
-  if command -v git >/dev/null 2>&1; then
-    local cdir; cdir="$(mktemp -d 2>/dev/null || echo "${TMPDIR:-/tmp}/oc-agents-clone-$$")"
-    if git clone --depth 1 "${base}.git" "$cdir" >/dev/null 2>&1 \
-         && [[ -f "$cdir/scripts/install-agents.sh" ]]; then
-      printf 'bash %q' "$cdir/scripts/install-agents.sh"; return 0
-    fi
-  fi
-
+  # (бывший «git clone последний рубеж» УБРАН: репозитории PRIVATE — clone не
+  # пройдёт, а git на приватный HTTPS-репо интерактивно требует
+  # «Username for 'https://github.com':» → клиенты принимают за фишинг и вводят
+  # свои GitHub-креды. Доставка только через gateway (block 0) / releases.)
   rm -f "$tmp" 2>/dev/null || true
   return 1
 }
