@@ -16,7 +16,7 @@ set -euo pipefail
 # Зачем: когда ученик пишет «не работает», по версии мы сразу видим,
 # на какой версии скрипта он сидит — и не гадаем, есть ли у него наши
 # последние фиксы или он закэшировал старый curl.
-INSTALLER_VERSION="2026.06.16"
+INSTALLER_VERSION="2026.06.19"
 INSTALLER_COMMIT="__COMMIT_PLACEHOLDER__"
 
 # ─── ПИН ВЕРСИИ OpenClaw ──────────────────────────────────────────────────
@@ -686,8 +686,9 @@ export NVM_DIR="$HOME/.nvm"
   done
 }
 
-# Устойчивое скачивание установщика агентов: releases/latest → прямой тег
-# (через GitHub API, обход 504 на сломанном редиректе /latest/) → git clone.
+# Устойчивое скачивание установщика агентов: gateway → github raw → releases/latest → прямой тег.
+# github raw — основной публичный путь при пустом IP_BASE; releases остаётся запасным
+# на случай будущего release-workflow/бандла.
 # Печатает команду запуска в stdout (для eval), код 0 при успехе; иначе 1.
 _fetch_agents_installer() {
   local repo="tonytrue92-beep/openclaw-agents-pack"
@@ -715,13 +716,20 @@ _fetch_agents_installer() {
     return 1
   fi
 
-  # 1) обычный путь — releases/latest/download
+  # 1) публичный GitHub raw (основной путь при пустом IP_BASE)
+  if curl -fsSL --connect-timeout 15 --max-time 60 --retry 3 \
+       "https://raw.githubusercontent.com/${repo}/main/scripts/install-agents.sh" -o "$tmp" 2>/dev/null \
+       && head -1 "$tmp" 2>/dev/null | grep -q '^#!'; then
+    printf 'bash %q' "$tmp"; return 0
+  fi
+
+  # 2) запасной путь — releases/latest/download
   if curl -fsSL --max-time 45 "${base}/releases/latest/download/install-agents-bundled.sh" -o "$tmp" 2>/dev/null \
        && head -1 "$tmp" 2>/dev/null | grep -q '^#!'; then
     printf 'bash %q' "$tmp"; return 0
   fi
 
-  # 2) прямой тег (обход сломанного редиректа /latest/, напр. 504)
+  # 3) прямой тег (обход сломанного редиректа /latest/, напр. 504)
   local tag
   tag=$(curl -fsSL --max-time 20 "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
           | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
@@ -731,10 +739,9 @@ _fetch_agents_installer() {
     printf 'bash %q' "$tmp"; return 0
   fi
 
-  # (бывший «git clone последний рубеж» УБРАН: репозитории PRIVATE — clone не
-  # пройдёт, а git на приватный HTTPS-репо интерактивно требует
-  # «Username for 'https://github.com':» → клиенты принимают за фишинг и вводят
-  # свои GitHub-креды. Доставка только через gateway (block 0) / releases.)
+  # (бывший «git clone последний рубеж» УБРАН: даже при публичных репозиториях
+  # не заставляем установщик делать git clone и не даём GitHub интерактивно
+  # спрашивать логин/пароль при сетевых/visibility-сбоях.)
   rm -f "$tmp" 2>/dev/null || true
   return 1
 }
